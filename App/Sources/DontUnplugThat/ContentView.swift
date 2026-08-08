@@ -140,7 +140,6 @@ struct ContentView: View {
         .padding(AppTheme.cardPadding)
         .background(AppTheme.cardBackground)
         .clipShape(.rect(cornerRadius: AppTheme.cardRadius))
-        .accessibilityElement(children: .combine)
     }
 
     var primaryActionTitle: String {
@@ -183,8 +182,4 @@ struct ContentView: View {
     func refreshAvailability() async {
         analysisAvailability = await OnDeviceAnalyzer.availability()
     }
-}
-
-#Preview {
-    ContentView()
 }

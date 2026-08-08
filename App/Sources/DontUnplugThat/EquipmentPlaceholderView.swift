@@ -15,6 +15,5 @@ struct EquipmentPlaceholderView: View {
         .padding(AppTheme.sectionSpacing)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppTheme.canvas)
-        .accessibilityElement(children: .combine)
     }
 }

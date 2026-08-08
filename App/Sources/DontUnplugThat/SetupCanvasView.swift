@@ -31,7 +31,6 @@ struct SetupCanvasView: View {
             RoundedRectangle(cornerRadius: AppTheme.cardRadius)
                 .stroke(.white.opacity(0.14), lineWidth: 1.0)
         }
-        .accessibilityElement(children: .contain)
         .accessibilityLabel("Annotated equipment setup")
         .task(id: photoURL) {
             photoAspectRatio = await SelectedPhotoMetadata.aspectRatio(for: photoURL)

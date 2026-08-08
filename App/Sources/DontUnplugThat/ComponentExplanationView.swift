@@ -91,7 +91,6 @@ struct ComponentExplanationView: View {
                 .font(.body)
                 .foregroundStyle(AppTheme.ink)
         }
-        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder var safetySection: some View {
