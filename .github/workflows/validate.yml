@@ -134,6 +134,29 @@ jobs:
         working-directory: App
         run: skip export --debug --dir "$RUNNER_TEMP/skip-export" --verbose
 
+      - name: Upload downloadable Android APK
+        if: github.event_name == 'push'
+        id: android-apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: dont-unplug-that-android-debug-${{ github.sha }}
+          path: ${{ runner.temp }}/skip-export/**/*.apk
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Add APK download to run summary
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          APK_ARTIFACT_URL: ${{ steps.android-apk.outputs.artifact-url }}
+        run: |
+          {
+            echo "## Android APK"
+            echo
+            echo "[Download the debug APK for commit \`${GITHUB_SHA}\`](${APK_ARTIFACT_URL})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Summarize artifacts
         shell: bash
         run: |
