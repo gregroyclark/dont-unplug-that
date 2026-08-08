@@ -80,7 +80,7 @@ func androidPhotoAspectRatio(urlString: String) -> Double {
     let stream = context.contentResolver.openInputStream(Uri.parse(urlString))
     guard let stream, let bitmap = BitmapFactory.decodeStream(stream), bitmap.height > 0 else {
         stream?.close()
-        return SelectedPhotoMetadata.fallbackAspectRatio
+        return 4.0 / 3.0
     }
     stream.close()
     return Double(bitmap.width) / Double(bitmap.height)
