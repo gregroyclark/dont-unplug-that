@@ -1,0 +1,45 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dont-unplug-that-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true
+    }
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "VAPOR_API",
+        "class_name": "VaporAPIContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["VaporAPIContainer"]
+    }
+  ],
+  "containers": [
+    {
+      "name": "dont-unplug-that-api-vapor",
+      "class_name": "VaporAPIContainer",
+      "image": "../Dockerfile",
+      "image_build_context": "..",
+      "instance_type": "lite",
+      "max_instances": 1
+    }
+  ]
+}

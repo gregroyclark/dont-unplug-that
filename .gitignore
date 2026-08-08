@@ -83,3 +83,10 @@ AuthKey_*.p8
 *.mobileprovision
 *.p12
 *.pfx
+
+# Cloudflare Worker tool output
+Cloudflare/node_modules/
+Cloudflare/.wrangler/
+Cloudflare/.dev.vars
+Cloudflare/.dev.vars.*
+!Cloudflare/.dev.vars.example
