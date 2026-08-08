@@ -106,8 +106,8 @@ commits it only to the `internal` track. It never changes production.
 
 ### `cloudflare-production`
 
-Cloudflare Containers are generally available on the Workers Paid plan. Protect
-this environment before using **Deploy Vapor API to Cloudflare**.
+Cloudflare Containers require the Workers Paid plan. Protect this environment
+before using **Deploy API to Cloudflare**.
 
 Environment variable:
 
@@ -116,19 +116,67 @@ Environment variable:
 Environment secret:
 
 - `CLOUDFLARE_API_TOKEN`: narrowly scoped token able to deploy the Worker and
-  its Container image and inspect Container rollout status in that account
+  its Container image, migrate D1, read Worker secret names, and inspect
+  Container rollout status in that account
+
+The Worker also requires five Cloudflare Worker secrets. Configure them with
+Wrangler, not as repository files:
+
+- `BETTER_AUTH_SECRET`: at least 32 cryptographically random bytes
+- `APPLE_CLIENT_ID`: the Apple Services ID used by the web OAuth flow
+- `APPLE_CLIENT_SECRET`: a current Apple client-secret JWT
+- `GOOGLE_CLIENT_ID`: a Google OAuth web client ID
+- `GOOGLE_CLIENT_SECRET`: that client's secret
+
+Bootstrap the resources once from `Cloudflare/` while logged into the intended
+account:
+
+```sh
+npx wrangler d1 create dont-unplug-that
+npx wrangler r2 bucket create dont-unplug-that-guide-photos
+npx wrangler secret put BETTER_AUTH_SECRET
+npx wrangler secret put APPLE_CLIENT_ID
+npx wrangler secret put APPLE_CLIENT_SECRET
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+npx wrangler d1 migrations apply DB --remote
+```
+
+Copy the D1 database ID returned by the first command into the `database_id`
+field for the `DB` binding in `Cloudflare/wrangler.jsonc`. Keep the R2 bucket
+private; do not enable an `r2.dev` domain or public custom domain. For local
+OAuth testing only, copy `.dev.vars.example` to ignored `.dev.vars` and fill in
+local values.
+
+The canonical production Worker host is
+`https://dont-unplug-that-api.gregroyclark.workers.dev`; it is compiled into
+the shared mobile `SyncConfiguration` for both platforms. If the Worker name or
+account subdomain changes, update that constant before shipping either app.
+
+Register these provider callback URLs:
+
+```text
+https://dont-unplug-that-api.gregroyclark.workers.dev/api/auth/callback/apple
+https://dont-unplug-that-api.gregroyclark.workers.dev/api/auth/callback/google
+```
+
+Apple needs the Worker host attached to the Services ID and its return URL.
+Google needs the exact callback as an authorized redirect URI. Sign-in remains
+unavailable until those console settings and secrets agree.
 
 The workflow runs automatically when a commit reaches `main` or `master`; it
 can also be dispatched manually with a full 40-character commit SHA. It checks
-both values and all required checkout files before it builds or deploys. It runs `npm ci`,
-checks committed Wrangler-generated bindings, executes the proxy tests,
-performs Wrangler's Docker-backed dry run, and only then deploys. It records the
+both values and all required checkout files before it builds or deploys. It
+runs `npm ci`, checks committed Wrangler-generated bindings, executes isolated
+Worker, D1, and R2 tests, performs Wrangler's Docker-backed dry run, confirms
+required Worker secret names, applies pending D1 migrations, and only then
+deploys. It records the
 exact source SHA, public URL reported by Wrangler, and Wrangler deployment data
 without printing secrets. It performs an immediate single-instance rollout,
 waits up to ten minutes for the named Container application to report a ready
 or active image/version, then allows up to five minutes for the public cold
-start before verifying `/health`, fixture `/v1/guides/analyze`, and blank-image
-`400` behavior.
+start before verifying `/health`, fixture `/v1/guides/analyze`, blank-image
+`400` behavior, and an unauthenticated sync `401`.
 
 For local preparation, Docker's daemon must be active:
 
@@ -137,22 +185,25 @@ cd Cloudflare
 npm ci
 npm run types:generate
 npm run check
+npx wrangler d1 migrations apply DB --local
 npm run config:check
 cd ..
 docker build --platform linux/amd64 --tag dont-unplug-that-server:local .
 ```
 
-The Worker uses one stable `fixture-api` instance and forwards the original
-request to Vapor. It does not log request bodies or sensitive headers. Inspect
-Worker logs and traces through Cloudflare Observability after a release. A
-container can cold-start after its ten-minute idle sleep.
+The Worker handles Better Auth and private guide sync directly. It forwards only
+the exact fixture routes to one stable `fixture-api` Vapor instance and removes
+credentials and identity headers first. It does not log request bodies or
+sensitive headers. Inspect Worker logs and traces through Cloudflare
+Observability after a release. A container can cold-start after its ten-minute
+idle sleep.
 
-Rollback is a separate approved release operation. For the complete API,
-manually redeploy a known-good commit SHA so Wrangler rebuilds and releases its
-matching Worker and Container image. `cd Cloudflare && npx wrangler rollback <version-id> --name dont-unplug-that-api`
-rolls back only the Worker and is safe only when the active Container image is
-known to be compatible. The first release can only be replaced by redeploying a
-known-good commit or disabling the Worker under separate authority.
+For the complete API, manually redeploy a known-good commit SHA so Wrangler
+rebuilds and releases its matching Worker and Container image. D1 migrations
+are forward-only: the chosen revision must remain compatible with the current
+schema. `cd Cloudflare && npx wrangler rollback <version-id> --name dont-unplug-that-api`
+rolls back only the Worker and is safe only when both the active Container image
+and D1 schema are compatible.
 
 ## Acceptance gates
 

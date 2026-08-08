@@ -12,18 +12,28 @@ the equipment and connections it can identify, and explains:
 
 It is designed for unfamiliar networking, IT, AV, appliances, plumbing, and
 electrical environments. It never declares that something is safe to unplug.
-Authentication, hosted sharing, QR codes, history, and cloud AI are deferred.
+Guide history is local-first. An optional account syncs guides and private,
+metadata-stripped photo derivatives across the user's devices; cloud AI and
+public sharing remain out of scope.
 
-## Swift end to end
-
-All human-authored product code is Swift:
+## Native app, small services
 
 - `App/` is a Skip Fuse app. Its SwiftUI code runs on iOS and is compiled for Android by Skip.
 - `Shared/` contains the `Codable` guide contract shared by the app and server.
 - `Server/` is a Vapor API with a deterministic development fixture; production
   photo inference does not pass through it.
+- `Cloudflare/` is a TypeScript Worker. Better Auth handles Apple and Google
+  sign-in, D1 stores account and guide metadata, and private R2 objects hold
+  sync-only photo derivatives.
 
-Skip's generated Android glue and the platform, package, and CI configuration files remain in their native formats. No product behavior or business logic is authored in Kotlin or JavaScript.
+The analysis experience remains native Swift/Skip on both platforms. Vapor is
+kept as the fixture API behind a Cloudflare Container; it is not an auth or
+photo-storage service.
+
+Mobile builds use the canonical Worker host
+`https://dont-unplug-that-api.gregroyclark.workers.dev` from shared Swift code,
+so the same endpoint ships on iOS and Android. Local development can override
+it with `DUT_API_BASE_URL`.
 
 ## Repository map
 
@@ -46,6 +56,7 @@ Cloudflare/ Worker glue, generated bindings, and pinned deployment tooling
    likely downstream impact of unplugging it.
 5. Add a close-up or stop and ask a qualified technician when the evidence or
    physical risk is unclear.
+6. Save the guide locally and, when signed in, sync it privately across devices.
 
 The server fixture keeps the contract testable without becoming a cloud fallback
 for private photos.
@@ -61,14 +72,15 @@ Requirements:
 
 Each package includes its own build instructions. No store credentials or AI keys belong in the repository.
 
-### Vapor API on Cloudflare Containers
+### Cloudflare sync and Vapor fixture API
 
-The existing Vapor executable is deployed unchanged in one Cloudflare Container.
-The TypeScript Worker only forwards the original request to the stable
-`fixture-api` instance; it does not implement product routes or validate API
-payloads. Cloudflare Containers are generally available on the Workers Paid
-plan. This first deployment intentionally has one `lite` instance, no outbound
-container internet access, ephemeral disk, and a ten-minute idle sleep period.
+The Worker owns optional account and sync routes. Better Auth uses direct D1,
+and guide photos are private R2 objects reachable only through authenticated
+Worker routes. Sync uses explicit revisions and tombstones so concurrent edits
+surface as conflicts instead of silently overwriting a guide. The existing
+Vapor executable is deployed unchanged in one Cloudflare Container and receives
+only exact `/health` and `/v1/guides/analyze` fixture requests with credentials
+stripped. Cloudflare Containers require the Workers Paid plan.
 
 Local prerequisites are Node.js 22+, Docker with its daemon running, and the
 Swift toolchain used by the image. From the repository root:
@@ -78,6 +90,7 @@ cd Cloudflare
 npm ci
 npm run types:generate
 npm run check
+npx wrangler d1 migrations apply DB --local
 npm run config:check
 cd ..
 docker build --platform linux/amd64 --tag dont-unplug-that-server:local .
@@ -89,7 +102,7 @@ Then verify the direct Vapor contract in another terminal:
 ```sh
 curl --fail-with-body http://127.0.0.1:8080/health
 curl --fail-with-body -H 'content-type: application/json' \
-  --data '{"base64EncodedImage":"ZmFrZQ==","mediaType":"image/jpeg"}' \
+  --data '{"photos":[{"base64EncodedImage":"ZmFrZQ==","mediaType":"image/jpeg"}]}' \
   http://127.0.0.1:8080/v1/guides/analyze
 ```
 
@@ -107,11 +120,14 @@ configured.
 
 Store submission, processing, tester-group assignment, and successful installation on physical devices are separate acceptance gates. A green workflow alone does not prove on-device delivery.
 
-Cloudflare release runs through **Deploy Vapor API to Cloudflare** whenever a
+Cloudflare release runs through **Deploy API to Cloudflare** whenever a
 commit reaches `main` or `master`. The same workflow can be run manually with
 an immutable, full 40-character commit SHA. Configure the
 `cloudflare-production` protected environment before enabling the first
-release. The job uses an immediate single-instance Container rollout, waits for
+release. Provision the D1 database and private R2 bucket, apply the committed
+migrations, and configure the Better Auth and OAuth secrets described in
+`.github/DEPLOYMENT.md`. The job applies pending D1 migrations, uses an immediate
+single-instance Container rollout, waits for
 Cloudflare to report the named image and version ready, records the source SHA
 and Wrangler deployment data, takes the URL reported by Wrangler rather than
 assuming a workers.dev subdomain, and runs public `/health`, fixture analyze,
@@ -119,8 +135,9 @@ and blank-image `400` smoke tests. First-time provisioning can take several
 minutes. View Worker logs and traces in Cloudflare Observability; do not add
 image bodies or sensitive headers to logs.
 
-For a full release rollback, manually redeploy a known-good commit SHA under a
-separately approved change; that rebuilds the matching Worker and Container
-image together. `cd Cloudflare && npx wrangler rollback <version-id> --name dont-unplug-that-api`
-rolls back only the Worker deployment and must be used only when the active
-Container image is known to be compatible.
+For a full release rollback, manually redeploy a known-good commit SHA; that
+rebuilds the matching Worker and Container image together. D1 migrations are
+forward-only, so a rollback must remain compatible with already-applied schema.
+`cd Cloudflare && npx wrangler rollback <version-id> --name dont-unplug-that-api`
+rolls back only the Worker deployment and is appropriate only when the active
+Container image and D1 schema remain compatible.

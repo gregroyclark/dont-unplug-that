@@ -1,4 +1,4 @@
-name: Deploy Vapor API to Cloudflare
+name: Deploy API to Cloudflare
 
 on:
   push:
@@ -22,7 +22,7 @@ concurrency:
 jobs:
   deploy:
     if: github.event_name != 'push' || github.event.deleted == false
-    name: Build, deploy, and smoke test Vapor API
+    name: Migrate, deploy, and smoke test API
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     environment: cloudflare-production
@@ -67,7 +67,7 @@ jobs:
             exit 1
           fi
 
-          for path in Dockerfile Server/Package.swift Shared/Package.swift Cloudflare/package.json Cloudflare/package-lock.json Cloudflare/wrangler.jsonc Cloudflare/worker-configuration.d.ts; do
+          for path in Dockerfile Server/Package.swift Shared/Package.swift Cloudflare/package.json Cloudflare/package-lock.json Cloudflare/wrangler.jsonc Cloudflare/worker-configuration.d.ts Cloudflare/migrations/0001_better_auth.sql Cloudflare/migrations/0002_sync.sql; do
             test -f "$path" || {
               echo "::error::$path is missing; the checked-out Cloudflare deployment project is incomplete."
               exit 1
@@ -91,6 +91,22 @@ jobs:
       - name: Validate Worker and container deployment
         working-directory: Cloudflare
         run: npm run config:check
+
+      - name: Verify production secrets and apply D1 migrations
+        working-directory: Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          secret_record="$RUNNER_TEMP/wrangler-secrets.json"
+          npx wrangler secret list --format json > "$secret_record"
+          for name in BETTER_AUTH_SECRET APPLE_CLIENT_ID APPLE_CLIENT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET; do
+            jq -e --arg name "$name" 'any(.[]; .name == $name)' "$secret_record" > /dev/null || {
+              echo "::error::Missing Worker secret: $name"
+              exit 1
+            }
+          done
+          npx wrangler d1 migrations apply DB --remote
 
       - name: Deploy Worker and container image
         id: deploy
@@ -228,13 +244,20 @@ jobs:
 
           curl --fail-with-body --silent --show-error --retry 3 --retry-all-errors --retry-delay 2 --max-time 90 \
             -H 'content-type: application/json' \
-            --data '{"base64EncodedImage":"ZmFrZQ==","mediaType":"image/jpeg","suggestedTitle":"Cloudflare smoke"}' \
+            --data '{"photos":[{"base64EncodedImage":"ZmFrZQ==","mediaType":"image/jpeg"}]}' \
             "$WORKER_URL/v1/guides/analyze" | jq -e '.analysisMode == "fixture"' > /dev/null
           status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 90 \
             -H 'content-type: application/json' \
-            --data '{"base64EncodedImage":" ","mediaType":"image/jpeg"}' \
+            --data '{"photos":[{"base64EncodedImage":" ","mediaType":"image/jpeg"}]}' \
             "$WORKER_URL/v1/guides/analyze")
           [[ "$status" == "400" ]] || {
             echo "::error::Blank-image smoke test returned HTTP $status; expected 400."
+            exit 1
+          }
+
+          status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 \
+            "$WORKER_URL/v1/sync/snapshot")
+          [[ "$status" == "401" ]] || {
+            echo "::error::Unauthenticated sync smoke test returned HTTP $status; expected 401."
             exit 1
           }

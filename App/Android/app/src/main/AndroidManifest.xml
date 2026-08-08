@@ -12,11 +12,19 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" /> -->
 
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService" />
+        </intent>
+    </queries>
+
     <application
         android:label="Don't Unplug That"
         android:name=".AndroidAppMain"
         android:supportsRtl="true"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher">
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -36,6 +44,15 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="dontunplugthat"
+                    android:host="auth"
+                    android:pathPrefix="/callback" />
             </intent-filter>
         </activity>
     </application>

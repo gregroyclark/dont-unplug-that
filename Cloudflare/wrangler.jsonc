@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-08-07",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1,
@@ -17,6 +19,22 @@
       "head_sampling_rate": 1,
       "persist": true
     }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dont-unplug-that",
+      "database_id": "499286ab-af43-471d-8ea5-a22d7576a372"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "GUIDE_PHOTOS",
+      "bucket_name": "dont-unplug-that-guide-photos"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 3 * * *"]
   },
   "durable_objects": {
     "bindings": [

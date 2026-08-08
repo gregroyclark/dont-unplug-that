@@ -5,14 +5,20 @@
   "type": "module",
   "scripts": {
     "check": "npm run types:check && npm run test",
+    "auth:migration": "auth generate --config auth.schema.config.ts --adapter kysely --dialect sqlite --output migrations/0001_better_auth.sql --yes",
     "types:generate": "wrangler types --include-runtime false",
     "types:check": "tsc --noEmit",
     "test": "vitest run",
     "config:check": "wrangler deploy --dry-run"
   },
+  "dependencies": {
+    "better-auth": "1.6.26"
+  },
   "devDependencies": {
     "@cloudflare/containers": "0.3.7",
+    "@cloudflare/vitest-pool-workers": "0.20.3",
     "@cloudflare/workers-types": "5.20260808.1",
+    "auth": "1.6.26",
     "typescript": "7.0.2",
     "vitest": "4.1.10",
     "wrangler": "4.120.0"

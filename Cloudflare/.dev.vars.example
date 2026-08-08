@@ -1,0 +1,6 @@
+# Copy this file to .dev.vars for local OAuth testing. Never commit real values.
+BETTER_AUTH_SECRET=replace-with-at-least-32-random-bytes
+APPLE_CLIENT_ID=replace-with-apple-services-id
+APPLE_CLIENT_SECRET=replace-with-current-apple-client-secret
+GOOGLE_CLIENT_ID=replace-with-google-oauth-client-id
+GOOGLE_CLIENT_SECRET=replace-with-google-oauth-client-secret
