@@ -4,6 +4,8 @@
 
 ## User settings
 xcuserdata/
+*.xcuserstate
+DerivedData/
 
 ## Obj-C/Swift specific
 *.hmap
@@ -30,6 +32,7 @@ playground.xcworkspace
 # .swiftpm
 
 .build/
+.swiftpm/
 
 # CocoaPods
 #
@@ -60,3 +63,23 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# Local credentials and platform build output
+.DS_Store
+.env
+.env.*
+!.env.example
+Secrets.xcconfig
+local.properties
+Android/.gradle/
+Android/app/build/
+App/Android/.gradle/
+App/Android/app/build/
+App/Android/app/keystore.jks
+App/Android/app/keystore.properties
+App/Android/fastlane/apikey.json
+App/Darwin/fastlane/apikey.json
+AuthKey_*.p8
+*.mobileprovision
+*.p12
+*.pfx

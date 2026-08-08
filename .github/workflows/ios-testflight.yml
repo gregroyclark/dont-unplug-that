@@ -1,0 +1,255 @@
+name: Deliver iOS to TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref or full commit SHA to deliver
+        required: true
+        default: master
+        type: string
+      marketing_version:
+        description: App version, for example 0.1.0
+        required: true
+        default: 0.1.0
+        type: string
+      build_number:
+        description: Optional numeric build number; blank uses a unique Actions number
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight-delivery
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    name: Archive, sign, and upload
+    runs-on: macos-15
+    timeout-minutes: 90
+    environment: ios-testflight
+    env:
+      ASC_APP_ID: ${{ vars.ASC_APP_ID || '6799321398' }}
+      PRODUCT_BUNDLE_IDENTIFIER: ${{ vars.PRODUCT_BUNDLE_IDENTIFIER || 'com.matson.dont-unplug-this' }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
+      IOS_SCHEME: DontUnplugThat App
+    steps:
+      - name: Check out requested ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Preflight TestFlight configuration
+        id: preflight
+        shell: bash
+        env:
+          REQUESTED_BUILD_NUMBER: ${{ inputs.build_number }}
+          REQUESTED_MARKETING_VERSION: ${{ inputs.marketing_version }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in \
+            ASC_APP_ID PRODUCT_BUNDLE_IDENTIFIER APPLE_TEAM_ID \
+            ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_BASE64; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing ios-testflight environment value: $name"
+              missing=1
+            fi
+          done
+          if (( missing )); then
+            echo "::error::Configure the ios-testflight GitHub environment as documented in .github/DEPLOYMENT.md. No build or upload was attempted."
+            exit 1
+          fi
+
+          for path in App/Project.xcworkspace App/Skip.env App/Darwin; do
+            test -e "$path" || {
+              echo "::error::$path is missing; the conventional Skip app scaffold is incomplete."
+              exit 1
+            }
+          done
+
+          configured_bundle=$(sed -n -E 's/^[[:space:]]*PRODUCT_BUNDLE_IDENTIFIER[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' App/Skip.env | tail -1)
+          if [[ "$configured_bundle" != "$PRODUCT_BUNDLE_IDENTIFIER" ]]; then
+            echo "::error::App/Skip.env has PRODUCT_BUNDLE_IDENTIFIER=$configured_bundle, but ASC app $ASC_APP_ID requires $PRODUCT_BUNDLE_IDENTIFIER. No build or upload was attempted."
+            exit 1
+          fi
+
+          [[ "$REQUESTED_MARKETING_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || {
+            echo "::error::marketing_version must contain two or three numeric components."
+            exit 1
+          }
+
+          build_number="$REQUESTED_BUILD_NUMBER"
+          if [[ -z "$build_number" ]]; then
+            build_number=$((GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))
+          fi
+          [[ "$build_number" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::build_number must be a positive integer."
+            exit 1
+          }
+
+          {
+            echo "marketing-version=$REQUESTED_MARKETING_VERSION"
+            echo "build-number=$build_number"
+            echo "source-sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Cache SwiftPM dependencies
+        uses: actions/cache@v5
+        with:
+          path: App/.build
+          key: ${{ runner.os }}-${{ runner.arch }}-ios-${{ hashFiles('App/Package.swift', 'App/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ios-
+
+      - name: Configure App Store Connect API key
+        id: api-key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key_dir="$HOME/.appstoreconnect/private_keys"
+          key_path="$key_dir/AuthKey_${ASC_KEY_ID}.p8"
+          mkdir -p "$key_dir"
+          printf '%s' "$ASC_PRIVATE_KEY_BASE64" | base64 --decode > "$key_path"
+          chmod 600 "$key_path"
+          grep -q -- 'BEGIN PRIVATE KEY' "$key_path" || {
+            echo "::error::ASC_PRIVATE_KEY_BASE64 did not decode to a PEM private key."
+            exit 1
+          }
+          echo "key-path=$key_path" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Swift packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace App/Project.xcworkspace \
+            -scheme "$IOS_SCHEME" \
+            -resolvePackageDependencies \
+            -skipPackagePluginValidation \
+            -skipMacroValidation
+
+      - name: Archive signed iOS app
+        shell: bash
+        env:
+          MARKETING_VERSION: ${{ steps.preflight.outputs.marketing-version }}
+          BUILD_NUMBER: ${{ steps.preflight.outputs.build-number }}
+          ASC_KEY_PATH: ${{ steps.api-key.outputs.key-path }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace App/Project.xcworkspace \
+            -scheme "$IOS_SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/DontUnplugThat.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            SKIP_ACTION=none \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            archive
+
+      - name: Export signed IPA
+        id: export
+        shell: bash
+        env:
+          ASC_KEY_PATH: ${{ steps.api-key.outputs.key-path }}
+        run: |
+          set -euo pipefail
+          export_options="$RUNNER_TEMP/ExportOptions.plist"
+          cat > "$export_options" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>destination</key><string>export</string>
+            <key>method</key><string>app-store-connect</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/DontUnplugThat.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$export_options" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+          ipa_path=$(find "$RUNNER_TEMP/export" -maxdepth 1 -type f -name '*.ipa' -print -quit)
+          test -n "$ipa_path" || {
+            echo "::error::Xcode export completed without producing an IPA."
+            exit 1
+          }
+          echo "ipa-path=$ipa_path" >> "$GITHUB_OUTPUT"
+
+      - name: Validate IPA with App Store Connect
+        shell: bash
+        env:
+          IPA_PATH: ${{ steps.export.outputs.ipa-path }}
+        run: |
+          set -euo pipefail
+          xcrun altool \
+            --validate-app \
+            -f "$IPA_PATH" \
+            -t ios \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Upload IPA to TestFlight
+        shell: bash
+        env:
+          IPA_PATH: ${{ steps.export.outputs.ipa-path }}
+        run: |
+          set -euo pipefail
+          xcrun altool \
+            --upload-app \
+            -f "$IPA_PATH" \
+            -t ios \
+            --apiKey "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Record TestFlight handoff
+        shell: bash
+        env:
+          MARKETING_VERSION: ${{ steps.preflight.outputs.marketing-version }}
+          BUILD_NUMBER: ${{ steps.preflight.outputs.build-number }}
+          SOURCE_SHA: ${{ steps.preflight.outputs.source-sha }}
+        run: |
+          {
+            echo "## TestFlight upload accepted"
+            echo
+            echo "- App Store Connect app: \`$ASC_APP_ID\`"
+            echo "- Bundle: \`$PRODUCT_BUNDLE_IDENTIFIER\`"
+            echo "- Version: \`$MARKETING_VERSION ($BUILD_NUMBER)\`"
+            echo "- Commit: \`$SOURCE_SHA\`"
+            echo "- Next gate: App Store Connect must finish processing the build before on-device TestFlight acceptance."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        env:
+          API_KEY_PATH: ${{ steps.api-key.outputs.key-path }}
+        run: |
+          if [[ -n "${API_KEY_PATH:-}" ]]; then rm -f "$API_KEY_PATH"; fi

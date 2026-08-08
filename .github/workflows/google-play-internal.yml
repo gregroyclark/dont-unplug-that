@@ -1,0 +1,278 @@
+name: Deliver Android to Google Play Internal
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref or full commit SHA to deliver
+        required: true
+        default: master
+        type: string
+      marketing_version:
+        description: App version, for example 0.1.0
+        required: true
+        default: 0.1.0
+        type: string
+      build_number:
+        description: Optional numeric version code; blank uses a unique Actions number
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: google-play-internal-delivery
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    name: Build, sign, and upload internal AAB
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    environment: google-play-internal
+    env:
+      ANDROID_PACKAGE_NAME: ${{ vars.ANDROID_PACKAGE_NAME || 'com.dontunplugthat.app' }}
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - name: Check out requested ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Preflight Google Play configuration
+        id: preflight
+        shell: bash
+        env:
+          REQUESTED_BUILD_NUMBER: ${{ inputs.build_number }}
+          REQUESTED_MARKETING_VERSION: ${{ inputs.marketing_version }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in \
+            ANDROID_PACKAGE_NAME GOOGLE_PLAY_SERVICE_ACCOUNT_JSON \
+            ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD \
+            ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing google-play-internal environment value: $name"
+              missing=1
+            fi
+          done
+          if (( missing )); then
+            echo "::error::Configure the google-play-internal GitHub environment as documented in .github/DEPLOYMENT.md. No build or upload was attempted."
+            exit 1
+          fi
+
+          for path in App/Package.swift App/Skip.env App/Android; do
+            test -e "$path" || {
+              echo "::error::$path is missing; the conventional Skip app scaffold is incomplete."
+              exit 1
+            }
+          done
+
+          configured_application_id=$(sed -n -E 's/^[[:space:]]*ANDROID_APPLICATION_ID[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' App/Skip.env | tail -1)
+          if [[ -z "$configured_application_id" ]]; then
+            configured_application_id=$(sed -n -E 's/^[[:space:]]*PRODUCT_BUNDLE_IDENTIFIER[[:space:]]*=[[:space:]]*([^[:space:]]+).*$/\1/p' App/Skip.env | tail -1)
+          fi
+          if [[ "$configured_application_id" != "$ANDROID_PACKAGE_NAME" ]]; then
+            echo "::error::The effective Android application ID is $configured_application_id, but the Play workflow targets $ANDROID_PACKAGE_NAME. No build or upload was attempted."
+            exit 1
+          fi
+
+          [[ "$REQUESTED_MARKETING_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || {
+            echo "::error::marketing_version must contain two or three numeric components."
+            exit 1
+          }
+
+          build_number="$REQUESTED_BUILD_NUMBER"
+          if [[ -z "$build_number" ]]; then
+            build_number=$((GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))
+          fi
+          [[ "$build_number" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::build_number must be a positive integer."
+            exit 1
+          }
+          (( build_number <= 2100000000 )) || {
+            echo "::error::Google Play version codes must not exceed 2100000000."
+            exit 1
+          }
+
+          {
+            echo "marketing-version=$REQUESTED_MARKETING_VERSION"
+            echo "build-number=$build_number"
+            echo "source-sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to the Android Publisher API
+        id: google-auth
+        uses: google-github-actions/auth@v3
+        with:
+          credentials_json: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+
+      - name: Cache app build dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            App/.build
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-${{ runner.arch }}-android-release-${{ hashFiles('App/Package.swift', 'App/Package.resolved', 'App/Android/**/*.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-android-release-
+
+      - name: Install Skip Fuse toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install skiptools/skip/skip
+          skip android sdk install
+          skip version
+          gradle --version
+
+      - name: Set release version in runner checkout
+        shell: bash
+        env:
+          MARKETING_VERSION: ${{ steps.preflight.outputs.marketing-version }}
+          BUILD_NUMBER: ${{ steps.preflight.outputs.build-number }}
+        run: |
+          set -euo pipefail
+          sed -i '' -E "s/^MARKETING_VERSION = .*/MARKETING_VERSION = $MARKETING_VERSION/" App/Skip.env
+          sed -i '' -E "s/^CURRENT_PROJECT_VERSION = .*/CURRENT_PROJECT_VERSION = $BUILD_NUMBER/" App/Skip.env
+          grep -q "^MARKETING_VERSION = $MARKETING_VERSION$" App/Skip.env || {
+            echo "::error::Could not set MARKETING_VERSION in App/Skip.env."
+            exit 1
+          }
+          grep -q "^CURRENT_PROJECT_VERSION = $BUILD_NUMBER$" App/Skip.env || {
+            echo "::error::Could not set CURRENT_PROJECT_VERSION in App/Skip.env."
+            exit 1
+          }
+
+      - name: Reconstruct Android upload keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > App/Android/app/keystore.jks
+          chmod 600 App/Android/app/keystore.jks
+          {
+            printf 'storeFile=keystore.jks\n'
+            printf 'storePassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$ANDROID_KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
+          } > App/Android/app/keystore.properties
+          chmod 600 App/Android/app/keystore.properties
+          keytool -list \
+            -keystore App/Android/app/keystore.jks \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            -alias "$ANDROID_KEY_ALIAS" > /dev/null
+
+      - name: Verify Skip project
+        working-directory: App
+        run: skip verify --verbose --project .
+
+      - name: Build signed release bundle
+        working-directory: App
+        run: gradle -p Android bundleRelease --no-daemon --stacktrace
+
+      - name: Locate and verify AAB
+        id: bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          aab_path=$(find App/.build/Android/app/outputs/bundle -type f -name '*.aab' -print -quit)
+          test -n "$aab_path" || {
+            echo "::error::Gradle completed without producing an Android App Bundle."
+            exit 1
+          }
+          jarsigner -verify "$aab_path" > /dev/null
+          echo "path=$aab_path" >> "$GITHUB_OUTPUT"
+
+      - name: Upload and publish to internal testing
+        id: play
+        shell: bash
+        env:
+          ACCESS_TOKEN: ${{ steps.google-auth.outputs.access_token }}
+          AAB_PATH: ${{ steps.bundle.outputs.path }}
+          MARKETING_VERSION: ${{ steps.preflight.outputs.marketing-version }}
+        run: |
+          set -euo pipefail
+          api_base="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$ANDROID_PACKAGE_NAME"
+          upload_base="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$ANDROID_PACKAGE_NAME"
+          auth_header="Authorization: Bearer $ACCESS_TOKEN"
+
+          edit_response=$(curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors \
+            -X POST \
+            -H "$auth_header" \
+            -H 'Content-Type: application/json' \
+            -d '{}' \
+            "$api_base/edits") || {
+              echo "::error::Could not create a Google Play edit. Confirm the app exists and the service account has app-level release access."
+              exit 1
+            }
+          edit_id=$(jq -er '.id' <<< "$edit_response")
+
+          bundle_response=$(curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors \
+            -X POST \
+            -H "$auth_header" \
+            -H 'Content-Type: application/octet-stream' \
+            --data-binary "@$AAB_PATH" \
+            "$upload_base/edits/$edit_id/bundles?uploadType=media") || {
+              echo "::error::Google Play rejected the AAB upload. Check upload-key ownership and version-code uniqueness."
+              exit 1
+            }
+          version_code=$(jq -er '.versionCode' <<< "$bundle_response")
+
+          track_payload=$(jq -n \
+            --arg version_code "$version_code" \
+            --arg release_name "$MARKETING_VERSION ($version_code)" \
+            '{track:"internal",releases:[{name:$release_name,versionCodes:[$version_code],status:"completed"}]}')
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors \
+            -X PUT \
+            -H "$auth_header" \
+            -H 'Content-Type: application/json' \
+            -d "$track_payload" \
+            "$api_base/edits/$edit_id/tracks/internal" > /dev/null
+
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors \
+            -X POST \
+            -H "$auth_header" \
+            "$api_base/edits/$edit_id:validate" > /dev/null
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-all-errors \
+            -X POST \
+            -H "$auth_header" \
+            "$api_base/edits/$edit_id:commit" > /dev/null
+
+          echo "version-code=$version_code" >> "$GITHUB_OUTPUT"
+
+      - name: Record Google Play handoff
+        shell: bash
+        env:
+          MARKETING_VERSION: ${{ steps.preflight.outputs.marketing-version }}
+          VERSION_CODE: ${{ steps.play.outputs.version-code }}
+          SOURCE_SHA: ${{ steps.preflight.outputs.source-sha }}
+        run: |
+          {
+            echo "## Google Play internal delivery committed"
+            echo
+            echo "- Package: \`$ANDROID_PACKAGE_NAME\`"
+            echo "- Version: \`$MARKETING_VERSION ($VERSION_CODE)\`"
+            echo "- Commit: \`$SOURCE_SHA\`"
+            echo "- Track: \`internal\`"
+            echo "- Next gate: confirm Play processing, tester eligibility, installation, and launch on a physical Android device."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove Android signing material
+        if: always()
+        shell: bash
+        run: |
+          rm -f App/Android/app/keystore.jks App/Android/app/keystore.properties

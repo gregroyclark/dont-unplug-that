@@ -1,0 +1,145 @@
+name: PR Validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-packages:
+    name: Shared and server tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Select Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.1"
+
+      - name: Cache SwiftPM builds
+        uses: actions/cache@v5
+        with:
+          path: |
+            Shared/.build
+            Server/.build
+          key: ${{ runner.os }}-swift-6.1-${{ hashFiles('Shared/Package.swift', 'Shared/Package.resolved', 'Server/Package.swift', 'Server/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-6.1-
+
+      - name: Verify package layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Shared/Package.swift || {
+            echo "::error::Shared/Package.swift is missing. Land the Swift shared-model scaffold first."
+            exit 1
+          }
+          test -f Server/Package.swift || {
+            echo "::error::Server/Package.swift is missing. Land the Vapor server scaffold first."
+            exit 1
+          }
+
+      - name: Test shared models
+        run: swift test --package-path Shared
+
+      - name: Test Vapor server
+        run: swift test --package-path Server
+
+  skip-app:
+    name: Skip iOS and Android verification
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Cache app build dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            App/.build
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-${{ runner.arch }}-skip-${{ hashFiles('App/Package.swift', 'App/Package.resolved', 'App/Skip.env', 'App/**/skip.yml', 'App/Android/**/*.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-skip-
+
+      - name: Verify Skip app layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in App/Package.swift App/Skip.env App/Project.xcworkspace App/Darwin App/Android; do
+            test -e "$path" || {
+              echo "::error::$path is missing. Land the conventional Skip Fuse app scaffold first."
+              exit 1
+            }
+          done
+
+      - name: Install Skip Fuse toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install skiptools/skip/skip
+          skip android sdk install
+          skip version
+
+      - name: Create ephemeral Android debug key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [[ ! -f "$HOME/.android/debug.keystore" ]]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -alias androiddebugkey \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass android \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Verify project configuration
+        working-directory: App
+        run: skip verify --verbose --project .
+
+      - name: Run cross-platform tests
+        working-directory: App
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -d Tests ]]; then
+            skip test
+          else
+            echo "No App/Tests directory yet; build verification remains required."
+          fi
+
+      - name: Build debug iOS and Android artifacts
+        working-directory: App
+        run: skip export --debug --dir "$RUNNER_TEMP/skip-export" --verbose
+
+      - name: Summarize artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## Skip build artifacts"
+            echo
+            find "$RUNNER_TEMP/skip-export" -type f \
+              \( -name '*.ipa' -o -name '*.apk' -o -name '*.aab' \) \
+              -exec sh -c 'for file do printf -- "- `%s` (%s bytes)\n" "$(basename "$file")" "$(stat -f %z "$file")"; done' sh {} +
+          } >> "$GITHUB_STEP_SUMMARY"
