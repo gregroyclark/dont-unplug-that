@@ -5,7 +5,7 @@ import Testing
 @Suite("Fixture guide")
 struct FixtureGuideTests {
     @Test("Includes five fully annotated components")
-    func includesFiveAnnotatedComponents() {
+    func testSkipModule() {
         let guide = FixtureGuide.make()
 
         #expect(guide.components.count == 5)
