@@ -1,0 +1,263 @@
+name: Deploy API to Cloudflare
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Full 40-character commit SHA to deploy
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-production-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name != 'push' || github.event.deleted == false
+    name: Migrate, deploy, and smoke test API
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: cloudflare-production
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      NO_COLOR: "1"
+      WRANGLER_LOG_PATH: ${{ runner.temp }}/wrangler-logs
+    steps:
+      - name: Validate requested deployment commit
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$REQUESTED_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Manual Cloudflare deployments require a full 40-character commit SHA."
+            exit 1
+          fi
+
+      - name: Check out requested ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Preflight Cloudflare deployment configuration
+        id: preflight
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Missing cloudflare-production environment value: $name"
+              missing=1
+            fi
+          done
+          if (( missing )); then
+            echo "::error::Configure the protected cloudflare-production GitHub environment. No image build or deployment was attempted."
+            exit 1
+          fi
+
+          for path in Dockerfile Server/Package.swift Shared/Package.swift Cloudflare/package.json Cloudflare/package-lock.json Cloudflare/wrangler.jsonc Cloudflare/worker-configuration.d.ts Cloudflare/migrations/0001_better_auth.sql Cloudflare/migrations/0002_sync.sql; do
+            test -f "$path" || {
+              echo "::error::$path is missing; the checked-out Cloudflare deployment project is incomplete."
+              exit 1
+            }
+          done
+
+          mkdir -p "$WRANGLER_LOG_PATH"
+          echo "source-sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned Worker dependencies
+        working-directory: Cloudflare
+        run: npm ci
+
+      - name: Verify generated bindings and proxy checks
+        working-directory: Cloudflare
+        run: |
+          set -euo pipefail
+          npx wrangler types --include-runtime false --check
+          npm run check
+
+      - name: Validate Worker and container deployment
+        working-directory: Cloudflare
+        run: npm run config:check
+
+      - name: Verify production secrets and apply D1 migrations
+        working-directory: Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          secret_record="$RUNNER_TEMP/wrangler-secrets.json"
+          npx wrangler secret list --format json > "$secret_record"
+          for name in BETTER_AUTH_SECRET APPLE_CLIENT_ID APPLE_CLIENT_SECRET GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET; do
+            jq -e --arg name "$name" 'any(.[]; .name == $name)' "$secret_record" > /dev/null || {
+              echo "::error::Missing Worker secret: $name"
+              exit 1
+            }
+          done
+          npx wrangler d1 migrations apply DB --remote
+
+      - name: Deploy Worker and container image
+        id: deploy
+        working-directory: Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SOURCE_SHA: ${{ steps.preflight.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          deploy_log="$RUNNER_TEMP/wrangler-deploy.log"
+          npx wrangler deploy --strict --containers-rollout immediate --tag "${SOURCE_SHA:0:12}" --message "Deploy $SOURCE_SHA" 2>&1 | tee "$deploy_log"
+          worker_url=$(grep -Eo 'https://[^[:space:]]+\.workers\.dev' "$deploy_log" | tail -1 | tr -d '\r')
+          test -n "$worker_url" || {
+            echo "::error::Wrangler completed without reporting a workers.dev URL; public smoke tests were not attempted."
+            exit 1
+          }
+          echo "worker-url=$worker_url" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Container rollout
+        id: container
+        working-directory: Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          container_name="dont-unplug-that-api-vapor"
+          container_record="$RUNNER_TEMP/wrangler-containers.json"
+          container_ready=false
+          rollout_deadline=$((SECONDS + 600))
+          attempt=0
+
+          while (( SECONDS < rollout_deadline )); do
+            attempt=$((attempt + 1))
+            if npx wrangler containers list --per-page 100 --json > "$container_record"; then
+              state=$(jq -r --arg name "$container_name" 'map(select(.name == $name)) | first | .state // "missing"' "$container_record")
+              image=$(jq -r --arg name "$container_name" 'map(select(.name == $name)) | first | .image // ""' "$container_record")
+              version=$(jq -r --arg name "$container_name" 'map(select(.name == $name)) | first | .version // ""' "$container_record")
+
+              case "$state" in
+                ready|active)
+                  if [[ -z "$image" || -z "$version" ]]; then
+                    echo "::error::Container $container_name reached $state without image/version identity."
+                    jq . "$container_record"
+                    exit 1
+                  fi
+                  container_ready=true
+                  echo "container-state=$state" >> "$GITHUB_OUTPUT"
+                  echo "container-image=$image" >> "$GITHUB_OUTPUT"
+                  echo "container-version=$version" >> "$GITHUB_OUTPUT"
+                  break
+                  ;;
+                degraded)
+                  echo "::error::Container $container_name entered degraded state."
+                  jq . "$container_record"
+                  exit 1
+                  ;;
+                *)
+                  echo "Container rollout attempt $attempt: state=$state"
+                  ;;
+              esac
+            else
+              echo "Container rollout attempt $attempt: status query failed; retrying."
+            fi
+
+            remaining=$((rollout_deadline - SECONDS))
+            if (( remaining > 0 )); then
+              (( remaining < 15 )) && sleep "$remaining" || sleep 15
+            fi
+          done
+
+          if [[ "$container_ready" != true ]]; then
+            echo "::error::Container $container_name did not become ready within 10 minutes."
+            if [[ -s "$container_record" ]]; then
+              jq . "$container_record" || true
+            fi
+            exit 1
+          fi
+
+      - name: Record deployed version information
+        working-directory: Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CONTAINER_IMAGE: ${{ steps.container.outputs.container-image }}
+          CONTAINER_STATE: ${{ steps.container.outputs.container-state }}
+          CONTAINER_VERSION: ${{ steps.container.outputs.container-version }}
+          SOURCE_SHA: ${{ steps.preflight.outputs.source-sha }}
+          WORKER_URL: ${{ steps.deploy.outputs.worker-url }}
+        run: |
+          set -euo pipefail
+          deployment_record="$RUNNER_TEMP/wrangler-deployments.json"
+          npx wrangler deployments list --name dont-unplug-that-api --json > "$deployment_record"
+          {
+            echo "## Cloudflare deployment"
+            echo
+            echo "- Source commit: \`$SOURCE_SHA\`"
+            echo "- Worker URL: $WORKER_URL"
+            echo "- Container state: \`$CONTAINER_STATE\`"
+            echo "- Container image: \`$CONTAINER_IMAGE\`"
+            echo "- Container version: \`$CONTAINER_VERSION\`"
+            echo
+            echo '```json'
+            jq . "$deployment_record"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test public Vapor contract
+        env:
+          WORKER_URL: ${{ steps.deploy.outputs.worker-url }}
+        run: |
+          set -euo pipefail
+          health_body="$RUNNER_TEMP/cloudflare-health.json"
+          health_ready=false
+          health_deadline=$((SECONDS + 300))
+          attempt=0
+          while (( SECONDS < health_deadline )); do
+            attempt=$((attempt + 1))
+            status=$(curl --silent --show-error --output "$health_body" --write-out '%{http_code}' --max-time 20 "$WORKER_URL/health" || true)
+            if [[ "$status" == "200" ]] && jq -e '.status == "ok"' "$health_body" > /dev/null 2>&1; then
+              health_ready=true
+              break
+            fi
+            echo "Public health attempt $attempt returned HTTP ${status:-curl-error}; retrying."
+            remaining=$((health_deadline - SECONDS))
+            if (( remaining > 0 )); then
+              (( remaining < 10 )) && sleep "$remaining" || sleep 10
+            fi
+          done
+          if [[ "$health_ready" != true ]]; then
+            echo "::error::The deployed Vapor Container did not pass public health checks within 5 minutes."
+            if [[ -s "$health_body" ]]; then
+              cat "$health_body"
+            fi
+            exit 1
+          fi
+
+          curl --fail-with-body --silent --show-error --retry 3 --retry-all-errors --retry-delay 2 --max-time 90 \
+            -H 'content-type: application/json' \
+            --data '{"photos":[{"base64EncodedImage":"ZmFrZQ==","mediaType":"image/jpeg"}]}' \
+            "$WORKER_URL/v1/guides/analyze" | jq -e '.analysisMode == "fixture"' > /dev/null
+          status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 90 \
+            -H 'content-type: application/json' \
+            --data '{"photos":[{"base64EncodedImage":" ","mediaType":"image/jpeg"}]}' \
+            "$WORKER_URL/v1/guides/analyze")
+          [[ "$status" == "400" ]] || {
+            echo "::error::Blank-image smoke test returned HTTP $status; expected 400."
+            exit 1
+          }
+
+          status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 \
+            "$WORKER_URL/v1/sync/snapshot")
+          [[ "$status" == "401" ]] || {
+            echo "::error::Unauthenticated sync smoke test returned HTTP $status; expected 401."
+            exit 1
+          }

@@ -6,6 +6,7 @@ build:
     - block: 'dependencies'
       contents:
         - 'implementation("com.google.mlkit:genai-prompt:1.0.0-beta4")'
+        - 'implementation("androidx.exifinterface:exifinterface:1.4.2")'
 
 # this is a natively-compiled Skip Fuse module
 skip:

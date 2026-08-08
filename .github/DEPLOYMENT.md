@@ -1,10 +1,10 @@
 # Deployment setup
 
-No store credentials are committed to the repository. The Apple variables and
-API-key secrets required by the TestFlight workflow are configured in GitHub;
-Google Play credentials are not yet configured. Pull requests only run
-validation. Store delivery is available exclusively through the two manual
-workflows and stops before a build when required configuration is absent.
+No store or Cloudflare credentials are committed to the repository. Pull
+requests only run validation. Store delivery is available through manual
+workflows. Cloudflare delivery runs on pushes to `main` or `master` and is also
+available manually by full 40-character commit SHA. Every delivery stops before
+a build when required configuration is absent.
 
 The confirmed Apple listing is **Don't Unplug That**, App Store Connect app ID
 `6799321398`, with bundle ID and SKU `com.matson.dont-unplug-this`. The Google
@@ -19,7 +19,7 @@ already carries those separate identifiers.
 
 ## GitHub environments
 
-Create two protected GitHub environments. Restrict who may approve deployments
+Create protected GitHub environments. Restrict who may approve deployments
 and prevent self-review if the repository plan supports it.
 
 ### `ios-testflight`
@@ -87,18 +87,123 @@ Environment secrets:
 
 Before the first run, Greg must:
 
-1. Create the matching Google Play app and complete every Play Console setup
+1. Complete the Play Console's government-ID, physical Android-device, and
+   phone verification. The workflow is ready in code, but the personal Play
+   Console account still blocks app creation until the owner completes those
+   checks; the repository cannot bypass them.
+2. Create the matching Google Play app and complete every Play Console setup
    item required before an internal release can be committed.
-2. Enable the Google Play Android Developer API for the service account's Cloud
+3. Enable the Google Play Android Developer API for the service account's Cloud
    project and grant that service account app-level permission to release to
    testing tracks.
-3. Enable Play App Signing and retain the stable upload keystore represented by
+4. Enable Play App Signing and retain the stable upload keystore represented by
    these secrets. Never generate a replacement key in CI.
-4. Configure the internal testing tester list or Google Group.
+5. Configure the internal testing tester list or Google Group.
 
 Run **Deliver Android to Google Play Internal** manually with an immutable
 commit SHA when a specific PR build is intended. It builds a signed `.aab` and
 commits it only to the `internal` track. It never changes production.
+
+### `cloudflare-production`
+
+Cloudflare Containers require the Workers Paid plan. Protect this environment
+before using **Deploy API to Cloudflare**.
+
+Environment variable:
+
+- `CLOUDFLARE_ACCOUNT_ID`: the account that owns the Worker and Container
+
+Environment secret:
+
+- `CLOUDFLARE_API_TOKEN`: narrowly scoped token able to deploy the Worker and
+  its Container image, migrate D1, read Worker secret names, and inspect
+  Container rollout status in that account
+
+The Worker also requires five Cloudflare Worker secrets. Configure them with
+Wrangler, not as repository files:
+
+- `BETTER_AUTH_SECRET`: at least 32 cryptographically random bytes
+- `APPLE_CLIENT_ID`: the Apple Services ID used by the web OAuth flow
+- `APPLE_CLIENT_SECRET`: a current Apple client-secret JWT
+- `GOOGLE_CLIENT_ID`: a Google OAuth web client ID
+- `GOOGLE_CLIENT_SECRET`: that client's secret
+
+Bootstrap the resources once from `Cloudflare/` while logged into the intended
+account:
+
+```sh
+npx wrangler d1 create dont-unplug-that
+npx wrangler r2 bucket create dont-unplug-that-guide-photos
+npx wrangler secret put BETTER_AUTH_SECRET
+npx wrangler secret put APPLE_CLIENT_ID
+npx wrangler secret put APPLE_CLIENT_SECRET
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+npx wrangler d1 migrations apply DB --remote
+```
+
+Copy the D1 database ID returned by the first command into the `database_id`
+field for the `DB` binding in `Cloudflare/wrangler.jsonc`. Keep the R2 bucket
+private; do not enable an `r2.dev` domain or public custom domain. For local
+OAuth testing only, copy `.dev.vars.example` to ignored `.dev.vars` and fill in
+local values.
+
+The canonical production Worker host is
+`https://dont-unplug-that-api.gregroyclark.workers.dev`; it is compiled into
+the shared mobile `SyncConfiguration` for both platforms. If the Worker name or
+account subdomain changes, update that constant before shipping either app.
+
+Register these provider callback URLs:
+
+```text
+https://dont-unplug-that-api.gregroyclark.workers.dev/api/auth/callback/apple
+https://dont-unplug-that-api.gregroyclark.workers.dev/api/auth/callback/google
+```
+
+Apple needs the Worker host attached to the Services ID and its return URL.
+Google needs the exact callback as an authorized redirect URI. Sign-in remains
+unavailable until those console settings and secrets agree.
+
+The workflow runs automatically when a commit reaches `main` or `master`; it
+can also be dispatched manually with a full 40-character commit SHA. It checks
+both values and all required checkout files before it builds or deploys. It
+runs `npm ci`, checks committed Wrangler-generated bindings, executes isolated
+Worker, D1, and R2 tests, performs Wrangler's Docker-backed dry run, confirms
+required Worker secret names, applies pending D1 migrations, and only then
+deploys. It records the
+exact source SHA, public URL reported by Wrangler, and Wrangler deployment data
+without printing secrets. It performs an immediate single-instance rollout,
+waits up to ten minutes for the named Container application to report a ready
+or active image/version, then allows up to five minutes for the public cold
+start before verifying `/health`, fixture `/v1/guides/analyze`, blank-image
+`400` behavior, and an unauthenticated sync `401`.
+
+For local preparation, Docker's daemon must be active:
+
+```sh
+cd Cloudflare
+npm ci
+npm run types:generate
+npm run check
+npx wrangler d1 migrations apply DB --local
+npm run config:check
+cd ..
+docker build --platform linux/amd64 --tag dont-unplug-that-server:local .
+```
+
+The Worker handles Better Auth and private guide sync directly. It forwards only
+the exact fixture routes to one stable `fixture-api` Vapor instance and removes
+credentials and identity headers first. It does not log request bodies or
+sensitive headers. Inspect Worker logs and traces through Cloudflare
+Observability after a release. A container can cold-start after its ten-minute
+idle sleep.
+
+For the complete API, manually redeploy a known-good commit SHA so Wrangler
+rebuilds and releases its matching Worker and Container image. D1 migrations
+are forward-only: the chosen revision must remain compatible with the current
+schema. `cd Cloudflare && npx wrangler rollback <version-id> --name dont-unplug-that-api`
+rolls back only the Worker and is safe only when both the active Container image
+and D1 schema are compatible.
 
 ## Acceptance gates
 

@@ -58,6 +58,37 @@ jobs:
       - name: Test Vapor server
         run: swift test --package-path Server
 
+  cloudflare:
+    name: Cloudflare Worker and Linux image validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Install pinned Worker dependencies
+        working-directory: Cloudflare
+        run: npm ci
+
+      - name: Verify Worker bindings, types, tests, and configuration
+        working-directory: Cloudflare
+        env:
+          WRANGLER_LOG_PATH: ${{ runner.temp }}/wrangler-logs
+        run: |
+          set -euo pipefail
+          mkdir -p "$WRANGLER_LOG_PATH"
+          npx wrangler types --include-runtime false --check
+          npm run check
+
+      - name: Validate Worker and container deployment
+        working-directory: Cloudflare
+        env:
+          WRANGLER_LOG_PATH: ${{ runner.temp }}/wrangler-logs
+        run: npm run config:check
+
+      - name: Build Linux amd64 Vapor container image
+        run: docker build --platform linux/amd64 --tag dont-unplug-that-server:ci .
+
   skip-app:
     name: Skip iOS and Android verification
     # Skip 1.9.5's Android Swift toolchain is not yet compatible with Xcode 27.

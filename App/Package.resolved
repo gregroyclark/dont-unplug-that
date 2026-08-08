@@ -1,5 +1,5 @@
 {
-  "originHash" : "cf5997b2bfcbaadedaf69a216214dbc4e6c5140d8a87d80651703c8e7e0e22a5",
+  "originHash" : "cafc0ae414b32dd7ffc6b9fbae5c2ee96ea8d566af4ad1e69245a53093f37a5c",
   "pins" : [
     {
       "identity" : "skip",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "545ea1b2d7ba4abc82daa2be00f81f4ea8e64e5b",
         "version" : "0.6.4"
+      }
+    },
+    {
+      "identity" : "skip-authentication-services",
+      "kind" : "remoteSourceControl",
+      "location" : "https://source.skip.dev/skip-authentication-services.git",
+      "state" : {
+        "revision" : "6ebda51ac9c2d2160a33c2563666ef1044ca89f2",
+        "version" : "0.1.0"
       }
     },
     {
@@ -53,6 +62,15 @@
       "state" : {
         "revision" : "d27fc109268b21feb98a48bc1a3f4558e162d9ca",
         "version" : "1.18.1"
+      }
+    },
+    {
+      "identity" : "skip-keychain",
+      "kind" : "remoteSourceControl",
+      "location" : "https://source.skip.tools/skip-keychain.git",
+      "state" : {
+        "revision" : "def9e33d25a5a6c92a4e6ae029d7a2ed3ecdd9d2",
+        "version" : "0.3.2"
       }
     },
     {
