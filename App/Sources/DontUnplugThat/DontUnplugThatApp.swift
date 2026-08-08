@@ -14,6 +14,8 @@ let logger: Logger = Logger(subsystem: "com.matson.dont-unplug-this", category: 
 
     public var body: some View {
         ContentView()
+            // ponytail: the MVP palette is light-only; add adaptive assets when dark mode is designed.
+            .preferredColorScheme(.light)
             .task {
                 logger.info("Skip app logs are viewable in the Xcode console for iOS; Android logs can be viewed in Studio or using adb logcat")
             }
