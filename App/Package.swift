@@ -12,11 +12,13 @@ let package = Package(
     dependencies: [
         .package(url: "https://source.skip.tools/skip.git", from: "1.9.5"),
         .package(url: "https://source.skip.tools/skip-fuse-ui.git", from: "1.0.0"),
+        .package(url: "https://source.skip.dev/skip-kit.git", from: "1.0.0"),
         .package(path: "../Shared")
     ],
     targets: [
         .target(name: "DontUnplugThat", dependencies: [
             .product(name: "SkipFuseUI", package: "skip-fuse-ui"),
+            .product(name: "SkipKit", package: "skip-kit"),
             .product(name: "DontUnplugThatShared", package: "Shared")
         ], resources: [.process("Resources")], plugins: [.plugin(name: "skipstone", package: "skip")]),
         .testTarget(

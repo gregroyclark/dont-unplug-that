@@ -16,6 +16,8 @@ GENERATE_INFOPLIST_FILE = YES
 
 // The user-visible name of the app (localizable)
 INFOPLIST_KEY_CFBundleDisplayName = Don't Unplug That
+INFOPLIST_KEY_NSCameraUsageDescription = Photograph equipment so the on-device model can explain the setup.
+INFOPLIST_KEY_NSPhotoLibraryUsageDescription = Choose equipment photos for private on-device analysis.
 //INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.utilities
 
 // iOS-specific Info.plist property keys

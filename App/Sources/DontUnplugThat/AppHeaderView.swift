@@ -1,28 +1,30 @@
 import SwiftUI
 
 struct AppHeaderView: View {
-    let componentCount: Int
+    let itemCount: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.standardSpacing) {
-            Label("Editable demo", systemImage: "pencil.and.list.clipboard")
+            Label("Private on-device analysis", systemImage: "lock.shield.fill")
                 .font(.subheadline)
                 .bold()
                 .foregroundStyle(AppTheme.accent)
 
-            Text("Make the complicated setup simple.")
+            Text("Understand what you're looking at.")
                 .font(.largeTitle)
                 .bold()
                 .foregroundStyle(AppTheme.ink)
 
-            Text("Tap a numbered pin, then leave the next person exact startup, shutdown, and hands-off instructions.")
+            Text("Photograph an unfamiliar setup. We'll explain what each part likely does and what may stop if it is disconnected.")
                 .font(.body)
                 .foregroundStyle(.secondary)
 
-            Label("^[\(componentCount) component](inflect: true) mapped", systemImage: "checkmark.seal.fill")
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.safe)
-                .accessibilityLabel("\(componentCount) components mapped")
+            if let itemCount {
+                Label("^[\(itemCount) item](inflect: true) found", systemImage: "checkmark.seal.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.safe)
+                    .accessibilityLabel("\(itemCount) items found")
+            }
         }
     }
 }

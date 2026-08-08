@@ -4,6 +4,7 @@ import SwiftUI
 struct ComponentChipView: View {
     let component: GuideComponent
     @Binding var selectedDisplayNumber: Int
+    @Binding var activePhotoIndex: Int
 
     var isSelected: Bool {
         selectedDisplayNumber == component.displayNumber
@@ -35,11 +36,12 @@ struct ComponentChipView: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Component \(component.displayNumber), \(component.name)")
+        .accessibilityLabel("\(component.kind == .connection ? "Connection" : "Component") \(component.displayNumber), \(component.name)")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 
     func selectComponent() {
         selectedDisplayNumber = component.displayNumber
+        activePhotoIndex = component.photoIndex
     }
 }

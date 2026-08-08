@@ -58,7 +58,16 @@ Before the first run, Gareth must:
 Run **Deliver iOS to TestFlight** manually with an immutable commit SHA when a
 specific PR build is intended. The default build number is
 `GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT`; provide a higher explicit number
-if App Store Connect already contains larger builds.
+if App Store Connect already contains larger builds. The workflow uses GitHub's
+`xcode-27` preview runner because multimodal Foundation Models image attachments
+require the iOS 27 SDK.
+
+Pull-request validation deliberately splits the mobile build across two jobs.
+The existing Intel runner keeps Skip 1.9.5's Android Swift build on an Xcode
+26-compatible toolchain, while a separate `xcode-27` job compiles the unsigned
+iOS simulator app with Android disabled. This makes Foundation Models compile
+failures visible without asking the incompatible Skip Android toolchain to run
+under Xcode 27.
 
 ### `google-play-internal`
 
@@ -97,7 +106,8 @@ A green workflow proves build and upload operations, not complete device
 acceptance. Record each layer independently:
 
 1. **Code/CI:** Shared and server tests pass; Skip verifies and exports both
-   platforms.
+   platforms on its Xcode 26-compatible runner; the separate Xcode 27 iOS gate
+   compiles the Foundation Models implementation.
 2. **iOS upload:** Apple accepts the exact bundle, version, build, and commit.
 3. **TestFlight:** App Store Connect finishes processing and the exact build is
    available to the intended internal tester group.
@@ -105,9 +115,10 @@ acceptance. Record each layer independently:
    to the internal track.
 5. **Google Play testing:** Play finishes processing and the intended tester is
    eligible.
-6. **Physical devices:** install, launch, photo selection, annotation editing,
-   image export, and PDF export pass on at least one iPhone and one Android
-   device.
+6. **Physical devices:** install, launch, photo capture/selection, on-device
+   model availability, annotated explanation, uncertainty, unplug-impact, and
+   safety-escalation states pass on at least one eligible iPhone and one
+   supported Android device.
 
 Store app creation, agreements, tester groups, processing, and physical-device
 proof are deliberately outside a successful upload job.

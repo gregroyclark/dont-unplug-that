@@ -2,13 +2,15 @@ import DontUnplugThatShared
 import SwiftUI
 
 struct SetupCanvasView: View {
+    let photoURL: URL?
     let components: [GuideComponent]
     @Binding var selectedDisplayNumber: Int
+    @State var photoAspectRatio = SelectedPhotoMetadata.fallbackAspectRatio
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                EquipmentPlaceholderView()
+                SelectedPhotoView(url: photoURL)
 
                 ForEach(components) { component in
                     AnnotationPinView(
@@ -22,7 +24,7 @@ struct SetupCanvasView: View {
                 }
             }
         }
-        .aspectRatio(4.0 / 3.0, contentMode: .fit)
+        .aspectRatio(photoAspectRatio, contentMode: .fit)
         .background(AppTheme.canvas)
         .clipShape(.rect(cornerRadius: AppTheme.cardRadius))
         .overlay {
@@ -31,6 +33,9 @@ struct SetupCanvasView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Annotated equipment setup")
+        .task(id: photoURL) {
+            photoAspectRatio = await SelectedPhotoMetadata.aspectRatio(for: photoURL)
+        }
     }
 
     func clamped(_ coordinate: Double) -> Double {

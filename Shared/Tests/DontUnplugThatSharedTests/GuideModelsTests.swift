@@ -8,15 +8,20 @@ func guideAnalysisJSONRoundTrip() throws {
         id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
         displayNumber: 1,
         name: "Power conditioner",
+        kind: .component,
+        photoIndex: 1,
         location: NormalizedCoordinate(x: 0.25, y: 0.75),
-        startupInstructions: "Turn on first.",
-        shutdownInstructions: "Turn off last.",
-        neverTouchInstructions: "Leave the voltage selector alone."
+        likelyPurpose: "Distributes power.",
+        unpluggingImpact: "The rack loses power.",
+        evidenceLevel: .inferred,
+        uncertaintyNotes: "The rear wiring is not visible.",
+        safetyWarning: "Stop around exposed mains wiring."
     )
     let response = AnalyzeGuideResponse(
         guide: Guide(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
             title: "Sunday setup",
+            summary: "A compact live-audio rack.",
             components: [component]
         ),
         analysisMode: .fixture,
@@ -37,14 +42,15 @@ func coordinateNormalization() {
     #expect(!NormalizedCoordinate(x: 0.5, y: 1.01).isNormalized)
 }
 
-@Test("Analyze request carries image metadata")
-func analyzeRequestMetadata() {
+@Test("Analyze request carries one or more photos")
+func analyzeRequestPhotos() {
     let request = AnalyzeGuideRequest(
-        base64EncodedImage: "aW1hZ2U=",
-        mediaType: .jpeg,
-        suggestedTitle: "Rack"
+        photos: [
+            GuidePhoto(base64EncodedImage: "aW1hZ2UtMQ==", mediaType: .jpeg),
+            GuidePhoto(base64EncodedImage: "aW1hZ2UtMg==", mediaType: .png)
+        ]
     )
 
-    #expect(request.mediaType == .jpeg)
-    #expect(request.suggestedTitle == "Rack")
+    #expect(request.photos.count == 2)
+    #expect(request.photos.map(\.mediaType) == [.jpeg, .png])
 }

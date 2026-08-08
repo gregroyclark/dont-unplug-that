@@ -60,6 +60,7 @@ jobs:
 
   skip-app:
     name: Skip iOS and Android verification
+    # Skip 1.9.5's Android Swift toolchain is not yet compatible with Xcode 27.
     runs-on: macos-15-intel
     timeout-minutes: 90
     steps:
@@ -92,6 +93,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          xcodebuild -version
           brew install skiptools/skip/skip
           skip android sdk install
           skip version
@@ -117,13 +119,13 @@ jobs:
         working-directory: App
         run: skip verify --verbose --project .
 
-      - name: Run cross-platform tests
+      - name: Run Swift app tests
         working-directory: App
         shell: bash
         run: |
           set -euo pipefail
           if [[ -d Tests ]]; then
-            skip test
+            swift test
           else
             echo "No App/Tests directory yet; build verification remains required."
           fi
@@ -143,3 +145,31 @@ jobs:
               \( -name '*.ipa' -o -name '*.apk' -o -name '*.aab' \) \
               -exec sh -c 'for file do printf -- "- `%s` (%s bytes)\n" "$(basename "$file")" "$(stat -f %z "$file")"; done' sh {} +
           } >> "$GITHUB_STEP_SUMMARY"
+
+  ios-foundation-models:
+    name: Foundation Models iOS compile (Xcode 27)
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Log Xcode version
+        run: xcodebuild -version
+
+      - name: Compile iOS app without Android or signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace App/Project.xcworkspace \
+            -scheme 'DontUnplugThat App' \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData-Xcode27" \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
+            SKIP_ACTION=none \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build

@@ -25,9 +25,9 @@ struct AnnotationPinView: View {
                 .shadow(color: .black.opacity(0.34), radius: 5.0, y: 2.0)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Component \(component.displayNumber), \(component.name)")
+        .accessibilityLabel("\(component.kind == .connection ? "Connection" : "Component") \(component.displayNumber), \(component.name)")
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
-        .accessibilityHint("Shows this component's instructions")
+        .accessibilityHint("Shows this item's explanation and unplugging impact")
     }
 
     func selectComponent() {

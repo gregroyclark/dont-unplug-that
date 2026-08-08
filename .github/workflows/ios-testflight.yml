@@ -28,7 +28,8 @@ concurrency:
 jobs:
   deliver:
     name: Archive, sign, and upload
-    runs-on: macos-26
+    # Multimodal Foundation Models attachments require the iOS 27 SDK.
+    runs-on: xcode-27
     timeout-minutes: 90
     environment: ios-testflight
     env:
@@ -128,6 +129,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          xcodebuild -version
           xcodebuild \
             -workspace App/Project.xcworkspace \
             -scheme "$IOS_SCHEME" \

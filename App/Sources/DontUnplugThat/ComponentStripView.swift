@@ -4,18 +4,19 @@ import SwiftUI
 struct ComponentStripView: View {
     let components: [GuideComponent]
     @Binding var selectedDisplayNumber: Int
+    @Binding var activePhotoIndex: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.standardSpacing) {
             HStack {
-                Text("Components")
+                Text("Found in this setup")
                     .font(.title2)
                     .bold()
                     .foregroundStyle(AppTheme.ink)
 
                 Spacer()
 
-                Text("Tap to edit")
+                Text("Tap to inspect")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -25,7 +26,8 @@ struct ComponentStripView: View {
                     ForEach(components) { component in
                         ComponentChipView(
                             component: component,
-                            selectedDisplayNumber: $selectedDisplayNumber
+                            selectedDisplayNumber: $selectedDisplayNumber,
+                            activePhotoIndex: $activePhotoIndex
                         )
                     }
                 }
