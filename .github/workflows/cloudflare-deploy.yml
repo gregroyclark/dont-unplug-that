@@ -5,6 +5,13 @@ on:
     branches:
       - main
       - master
+    paths:
+      - "Cloudflare/**"
+      - "Server/**"
+      - "Shared/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/cloudflare-deploy.yml"
   workflow_dispatch:
     inputs:
       ref:

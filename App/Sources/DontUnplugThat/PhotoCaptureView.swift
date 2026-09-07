@@ -10,31 +10,33 @@ struct PhotoCaptureView: View {
     @State var capturedPhotoURL: URL?
     @State var pickedLibraryURLs: [URL] = []
 
-    var canAddPhotos: Bool {
-        photoURLs.count < 3
-    }
+    var canAddPhotos: Bool { photoURLs.count < 3 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.standardSpacing) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4.0) {
-                    Text("Photos")
-                        .font(.title2)
-                        .bold()
-                    Text("Add up to three angles. Photo 1 is the best overview.")
+            if photoURLs.isEmpty {
+                Image("WelcomeSetup", bundle: .module)
+                    .resizable()
+                    .aspectRatio(1.25, contentMode: .fit)
+                    .overlay(alignment: .top) {
+                        Text("Example setup")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.accent)
+                            .padding(.top, 18.0)
+                    }
+                    .clipShape(.rect(cornerRadius: AppTheme.cardRadius))
+                    .accessibilityLabel("Example setup: a speaker, a plant, and a cable")
+            } else {
+                HStack {
+                    Text("Your photos")
+                        .font(.system(.title3, design: .rounded, weight: .semibold))
+                    Spacer()
+                    Text("\(photoURLs.count) of 3")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.secondaryInk)
                 }
-                Spacer()
-                Text("\(photoURLs.count)/3")
-                    .font(.subheadline)
-                    .bold()
-                    .foregroundStyle(AppTheme.accent)
-            }
-
-            if !photoURLs.isEmpty {
                 ScrollView(.horizontal) {
-                    HStack(spacing: AppTheme.compactSpacing) {
+                    HStack(spacing: AppTheme.standardSpacing) {
                         ForEach(0..<photoURLs.count, id: \.self) { index in
                             Button {
                                 activePhotoIndex = index
@@ -42,9 +44,9 @@ struct PhotoCaptureView: View {
                                 SelectedPhotoView(url: photoURLs[index])
                                     .frame(width: 86.0, height: 64.0)
                                     .clipped()
-                                    .clipShape(.rect(cornerRadius: 12.0))
+                                    .clipShape(.rect(cornerRadius: 10.0))
                                     .overlay {
-                                        RoundedRectangle(cornerRadius: 12.0)
+                                        RoundedRectangle(cornerRadius: 10.0)
                                             .stroke(index == activePhotoIndex ? AppTheme.accent : .clear, lineWidth: 3.0)
                                     }
                             }
@@ -53,58 +55,48 @@ struct PhotoCaptureView: View {
                             .accessibilityValue(index == activePhotoIndex ? "Selected" : "Not selected")
                         }
                     }
+                    .padding(3.0)
                 }
                 .scrollIndicators(.hidden)
             }
 
-            HStack(spacing: AppTheme.compactSpacing) {
-                Button {
-                    showsCamera = true
-                } label: {
-                    Label("Take photo", systemImage: "camera.fill")
-                        .frame(maxWidth: .infinity, minHeight: 44.0)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!canAddPhotos)
-                .withMediaPicker(
-                    type: .camera,
-                    isPresented: $showsCamera,
-                    selectedImageURL: $capturedPhotoURL
-                )
-
-                Button {
-                    showsLibrary = true
-                } label: {
-                    Label("Choose", systemImage: "photo.on.rectangle")
-                        .frame(maxWidth: .infinity, minHeight: 44.0)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!canAddPhotos)
-                .withMediaPicker(
-                    type: .library,
-                    isPresented: $showsLibrary,
-                    allowsMultipleSelection: true,
-                    selectedImageURLs: $pickedLibraryURLs
-                )
+            Button { showsCamera = true } label: {
+                Label(photoURLs.isEmpty ? "Take a photo" : "Add another angle", systemImage: "camera")
+                    .font(.system(.headline, design: .rounded))
+                    .frame(maxWidth: .infinity, minHeight: 44.0)
             }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.roundedRectangle(radius: 10.0))
+            .disabled(!canAddPhotos)
+            .withMediaPicker(type: .camera, isPresented: $showsCamera, selectedImageURL: $capturedPhotoURL)
+
+            Button { showsLibrary = true } label: {
+                Label("Choose photos", systemImage: "photo.on.rectangle")
+                    .font(.system(.body, design: .rounded, weight: .medium))
+                    .frame(maxWidth: .infinity, minHeight: 44.0)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(canAddPhotos ? AppTheme.accent : AppTheme.secondaryInk)
+            .disabled(!canAddPhotos)
+            .withMediaPicker(type: .library, isPresented: $showsLibrary,
+                             allowsMultipleSelection: true, selectedImageURLs: $pickedLibraryURLs)
+
+            Text(canAddPhotos ? "Up to 3 angles. Analyzed on this device." : "All 3 angles added. Ready to analyze.")
+                .font(.footnote)
+                .foregroundStyle(AppTheme.secondaryInk)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
 
             if !photoURLs.isEmpty {
-                Button(role: .destructive) {
-                    removeActivePhoto()
-                } label: {
+                Button(role: .destructive) { removeActivePhoto() } label: {
                     Label("Remove selected photo", systemImage: "trash")
-                        .frame(minHeight: 44.0)
+                        .font(.footnote)
+                        .frame(maxWidth: .infinity, minHeight: 44.0)
                 }
                 .buttonStyle(.plain)
             }
-
-            Label("Photos are analyzed on this device.", systemImage: "lock.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
-        .padding(AppTheme.cardPadding)
-        .background(AppTheme.cardBackground)
-        .clipShape(.rect(cornerRadius: AppTheme.cardRadius))
+        .foregroundStyle(AppTheme.ink)
         .onChange(of: capturedPhotoURL) { newURL in
             if let newURL {
                 appendPhotos([newURL])
@@ -126,9 +118,7 @@ struct PhotoCaptureView: View {
     }
 
     func removeActivePhoto() {
-        guard photoURLs.indices.contains(activePhotoIndex) else {
-            return
-        }
+        guard photoURLs.indices.contains(activePhotoIndex) else { return }
         photoURLs.remove(at: activePhotoIndex)
         activePhotoIndex = min(activePhotoIndex, max(0, photoURLs.count - 1))
     }

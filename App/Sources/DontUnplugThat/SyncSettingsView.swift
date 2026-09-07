@@ -78,6 +78,8 @@ struct SyncSettingsView: View {
                         .foregroundStyle(AppTheme.warning)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.pageBackground)
             .navigationTitle("Sync")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -85,6 +87,8 @@ struct SyncSettingsView: View {
                 }
             }
         }
+        .tint(AppTheme.accent)
+        .font(.system(.body, design: .rounded))
     }
 
     private func run(_ operation: @escaping () async throws -> Void) {

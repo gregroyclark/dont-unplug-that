@@ -22,7 +22,7 @@ struct AnnotationPinView: View {
                     Circle()
                         .stroke(isSelected ? .white : AppTheme.accent, lineWidth: isSelected ? 3.0 : 2.0)
                 }
-                .shadow(color: .black.opacity(0.34), radius: 5.0, y: 2.0)
+                .shadow(color: AppTheme.ink.opacity(0.16), radius: 3.0, y: 1.0)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(component.kind == .connection ? "Connection" : "Component") \(component.displayNumber), \(component.name)")

@@ -90,3 +90,9 @@ Cloudflare/.wrangler/
 Cloudflare/.dev.vars
 Cloudflare/.dev.vars.*
 !Cloudflare/.dev.vars.example
+
+# Website build output
+Website/node_modules/
+Website/dist/
+Website/.vite/
+Website/.wrangler/

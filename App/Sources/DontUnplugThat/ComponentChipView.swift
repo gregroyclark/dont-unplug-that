@@ -28,11 +28,11 @@ struct ComponentChipView: View {
             }
             .padding(.horizontal, AppTheme.standardSpacing)
             .frame(minHeight: 48.0)
-            .background(isSelected ? AppTheme.cardBackground : .white.opacity(0.62))
-            .clipShape(.capsule)
+            .background(isSelected ? AppTheme.accentSoft : AppTheme.cardBackground)
+            .clipShape(.rect(cornerRadius: 10.0))
             .overlay {
-                Capsule()
-                    .stroke(isSelected ? AppTheme.accent : .clear, lineWidth: 2.0)
+                RoundedRectangle(cornerRadius: 10.0)
+                    .stroke(isSelected ? AppTheme.accent : .clear, lineWidth: 1.0)
             }
         }
         .buttonStyle(.plain)

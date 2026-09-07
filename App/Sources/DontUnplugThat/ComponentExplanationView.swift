@@ -102,7 +102,7 @@ struct ComponentExplanationView: View {
                 text: warning
             )
             .padding(AppTheme.standardSpacing)
-            .background(AppTheme.accentSoft.opacity(0.72))
+            .background(AppTheme.warningSoft)
             .clipShape(.rect(cornerRadius: 14.0))
         } else {
             explanationSection(

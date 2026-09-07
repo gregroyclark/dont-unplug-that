@@ -3,7 +3,7 @@ import SwiftUI
 struct EquipmentPlaceholderView: View {
     var body: some View {
         VStack(spacing: AppTheme.standardSpacing) {
-            Image(systemName: "camera.fill")
+            Image(systemName: "photo")
                 .font(.largeTitle)
             Text("Add a clear photo of the setup")
                 .font(.headline)
@@ -11,7 +11,7 @@ struct EquipmentPlaceholderView: View {
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
         }
-        .foregroundStyle(.white.opacity(0.78))
+        .foregroundStyle(AppTheme.secondaryInk)
         .padding(AppTheme.sectionSpacing)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppTheme.canvas)

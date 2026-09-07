@@ -66,6 +66,8 @@ struct GuideLibraryView: View {
                     .padding(.vertical, 4.0)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.pageBackground)
             .navigationTitle("Saved Guides")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -73,6 +75,8 @@ struct GuideLibraryView: View {
                 }
             }
         }
+        .tint(AppTheme.accent)
+        .font(.system(.body, design: .rounded))
     }
 
     private func statusText(_ status: LocalSyncStatus) -> String {

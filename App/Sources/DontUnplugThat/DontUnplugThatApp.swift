@@ -14,6 +14,7 @@ let logger: Logger = Logger(subsystem: "com.matson.dont-unplug-this", category: 
 
     public var body: some View {
         ContentView()
+            .font(.system(.body, design: .rounded))
             // ponytail: the MVP palette is light-only; add adaptive assets when dark mode is designed.
             .preferredColorScheme(.light)
             .task {

@@ -38,22 +38,22 @@ struct ContentView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: AppTheme.sectionSpacing) {
-                    AppHeaderView(itemCount: guide?.components.count)
+                    appNavigation
 
-                    syncCard
+                    AppHeaderView(itemCount: guide?.components.count)
 
                     PhotoCaptureView(
                         photoURLs: $photoURLs,
                         activePhotoIndex: $activePhotoIndex
                     )
 
-                    SetupCanvasView(
-                        photoURL: activePhotoURL,
-                        components: activePhotoComponents,
-                        selectedDisplayNumber: $selectedDisplayNumber
-                    )
-
                     if !photoURLs.isEmpty {
+                        SetupCanvasView(
+                            photoURL: activePhotoURL,
+                            components: activePhotoComponents,
+                            selectedDisplayNumber: $selectedDisplayNumber
+                        )
+
                         Text("Photo \(activePhotoIndex + 1) of \(photoURLs.count)")
                             .font(.caption)
                             .bold()
@@ -77,25 +77,18 @@ struct ContentView: View {
                                 .id(selectedComponent.id)
                         }
                     }
+
+                    savedGuidesSection
+                    syncCard
                 }
                 .padding(AppTheme.pagePadding)
+                .frame(maxWidth: 640.0)
+                .frame(maxWidth: .infinity)
             }
             .background(AppTheme.pageBackground)
-            .navigationTitle("Don't Unplug That")
-            .toolbar {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button {
-                        showsLibrary = true
-                    } label: {
-                        Label("Saved guides", systemImage: "books.vertical")
-                    }
-                    Button {
-                        showsSyncSettings = true
-                    } label: {
-                        Label("Sync settings", systemImage: account == nil ? "icloud.slash" : "icloud")
-                    }
-                }
-            }
+            #if !os(macOS)
+            .toolbar(.hidden, for: .navigationBar)
+            #endif
         }
         .tint(AppTheme.accent)
         .task {
@@ -146,37 +139,74 @@ struct ContentView: View {
         return photoURLs[activePhotoIndex]
     }
 
-    @ViewBuilder var syncCard: some View {
-        HStack(spacing: AppTheme.standardSpacing) {
-            Image(systemName: account == nil ? "icloud.slash" : "icloud.and.arrow.up")
-                .foregroundStyle(account == nil ? .secondary : AppTheme.safe)
-            VStack(alignment: .leading, spacing: 2.0) {
-                Text(account == nil ? "Optional cross-device sync" : "Sync is on")
-                    .font(.subheadline)
-                    .bold()
-                Text(syncMessage ?? (account == nil
-                    ? "Analysis stays on device. Turn on Sync only if you want your guides elsewhere."
-                    : "Private resized photo copies sync with your guides."))
-                    .font(.caption)
-                    .foregroundStyle(syncMessage == nil ? .secondary : AppTheme.warning)
-            }
-            Spacer()
-            if isSyncing {
-                ProgressView()
-            } else {
-                Button(account == nil ? "Turn on Sync" : "Sync") {
-                    if account == nil {
-                        showsSyncSettings = true
-                    } else {
-                        Task { await runSync() }
+    var appNavigation: some View {
+        HStack(spacing: AppTheme.compactSpacing) {
+            Label("Don’t Unplug That", systemImage: "powerplug")
+                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .foregroundStyle(AppTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4.0)
+            Button("Saved guides") { showsLibrary = true }
+                .font(.system(.caption, design: .rounded, weight: .medium))
+                .frame(minHeight: 44.0)
+        }
+    }
+
+    var savedGuidesSection: some View {
+        VStack(alignment: .leading, spacing: AppTheme.standardSpacing) {
+            Divider().overlay(AppTheme.separator)
+            Text("Your saved guides")
+                .font(.system(.headline, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+                .padding(.top, 8.0)
+
+            if let record = savedGuides.first {
+                Button { openGuide(record) } label: {
+                    HStack(spacing: AppTheme.standardSpacing) {
+                        SelectedPhotoView(url: repository.photoURLs(for: record).first)
+                            .frame(width: 88.0, height: 66.0)
+                            .clipped()
+                            .clipShape(.rect(cornerRadius: 8.0))
+                        Text(record.guide.title)
+                            .font(.system(.subheadline, design: .rounded, weight: .medium))
+                            .foregroundStyle(AppTheme.ink)
+                            .multilineTextAlignment(.leading)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(AppTheme.secondaryInk)
                     }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open saved guide: \(record.guide.title)")
+            } else {
+                Text("Your first guide starts with a photo. It will be saved here automatically.")
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.secondaryInk)
             }
         }
-        .padding(AppTheme.cardPadding)
-        .background(AppTheme.cardBackground)
-        .clipShape(.rect(cornerRadius: AppTheme.cardRadius))
+    }
+
+    var syncCard: some View {
+        VStack(alignment: .leading, spacing: AppTheme.compactSpacing) {
+            Button { showsSyncSettings = true } label: {
+                HStack(spacing: AppTheme.compactSpacing) {
+                    Image(systemName: account == nil ? "lock" : "icloud")
+                    Text(account == nil ? "Privacy & optional sync" : "Privacy & sync")
+                    Spacer()
+                    if isSyncing { ProgressView() }
+                    Image(systemName: "chevron.right")
+                }
+                .font(.footnote)
+                .frame(minHeight: 44.0)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(AppTheme.secondaryInk)
+            if let syncMessage {
+                Text(syncMessage)
+                    .font(.footnote)
+                    .foregroundStyle(AppTheme.warning)
+            }
+        }
     }
 
     @ViewBuilder var analysisControls: some View {
@@ -213,7 +243,7 @@ struct ContentView: View {
             .disabled(isWorking || !canPerformPrimaryAction)
         }
         .padding(AppTheme.cardPadding)
-        .background(AppTheme.cardBackground)
+        .background(AppTheme.accentSoft)
         .clipShape(.rect(cornerRadius: AppTheme.cardRadius))
     }
 
@@ -228,7 +258,7 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(AppTheme.cardPadding)
-        .background(AppTheme.cardBackground)
+        .background(AppTheme.accentSoft)
         .clipShape(.rect(cornerRadius: AppTheme.cardRadius))
     }
 

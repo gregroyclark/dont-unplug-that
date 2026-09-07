@@ -18,7 +18,7 @@ struct SelectedPhotoView: View {
                     .scaledToFill()
             } placeholder: {
                 ProgressView()
-                    .tint(.white)
+                    .tint(AppTheme.accent)
             }
             #elseif os(iOS)
             if let image = UIImage(contentsOfFile: url.path) {

@@ -243,3 +243,41 @@ References: [Skip deployment](https://skip.dev/docs/deployment/),
 [App Store Connect API keys](https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api),
 [Google Play bundle upload](https://developers.google.com/android-publisher/api-ref/rest/v3/edits.bundles/upload),
 and [GitHub Swift CI](https://docs.github.com/en/actions/tutorials/build-and-test-code/swift).
+
+
+## Website pipeline — `website-production`
+
+`.github/workflows/website.yml` validates only `Website/**` changes and changes to
+its own workflow. Pull requests build and test without deployment credentials.
+Pushes to `master` or `main` deploy after the website build succeeds. Manual runs
+require a full commit SHA. Deployment uses that exact checkout and the successful
+build's artifact; it does not rebuild native apps, run database migrations, or
+release the API.
+
+Configure a separate GitHub environment named `website-production` with a
+`CLOUDFLARE_API_TOKEN` secret authorized for website Worker deployments in the
+account declared by `Website/wrangler.jsonc`. Use Workers Scripts edit permission
+and Zone read for custom-domain resolution; keep database and native signing
+credentials out of this environment. Configure environment approval/protection
+rules as desired before enabling automated production delivery. Existing local
+Wrangler login continues to support `cd Website && npm run deploy`.
+
+This configuration change is local until committed and pushed by the user. The
+new GitHub environment and CI secret have not been created by this task. The live
+Cloudflare site already works and needs no redeploy just because the checkout
+moved.
+
+## Validation boundaries
+
+The former `validate.yml` is split into `native-validation.yml` and
+`api-validation.yml`. Native validation responds to App and Shared changes; API
+validation responds to Cloudflare, Server, Shared, Dockerfile and .dockerignore
+changes. Each includes its relevant workflow files in the path filters. Store
+release workflows remain manual and keep their existing signing environments.
+API deployment now has matching path filters, so website changes cannot trigger
+its migration or deployment steps.
+
+If branch protection requires the old validation workflow on every PR, review
+those requirements when adopting these files: GitHub path-filtered workflows
+can leave required checks pending when their paths do not change. See
+[GitHub workflow path-filter documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushpull_requestpull_request_targetpathspaths-ignore).

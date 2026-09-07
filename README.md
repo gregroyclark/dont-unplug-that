@@ -35,9 +35,25 @@ Mobile builds use the canonical Worker host
 so the same endpoint ships on iOS and Android. Local development can override
 it with `DUT_API_BASE_URL`.
 
+## Website and visual direction
+
+`Website/` is the Daylight website, built with React and Vite. It includes an
+interactive, clearly labeled sample guide; photo analysis remains in the native
+app. Start it with `cd Website && npm install && npm run dev`. Build with
+`npm run build`; the static site is emitted at `dist/client/`. Its bundled Sites
+adapter is retained. Production hosting uses Cloudflare Workers Static Assets at
+`https://dontunplugthat.com/`; deployment configuration lives in
+`Website/wrangler.jsonc`.
+
+The selected website and app design is preserved at `Design/daylight-selected.png`.
+See `Design/README.md` for palette and product constraints. Design 1 (Field Guide)
+was saved separately for a future project in Greg’s reusable design library.
+
 ## Repository map
 
 ```text
+Website/   Daylight marketing website with an interactive example
+Design/    Selected visual direction and QA evidence
 App/       Skip Fuse mobile app for iOS and Android
 Server/    Swift/Vapor API
 Shared/    Shared Swift models and validation
@@ -120,8 +136,8 @@ configured.
 
 Store submission, processing, tester-group assignment, and successful installation on physical devices are separate acceptance gates. A green workflow alone does not prove on-device delivery.
 
-Cloudflare release runs through **Deploy API to Cloudflare** whenever a
-commit reaches `main` or `master`. The same workflow can be run manually with
+Cloudflare API release runs through **Deploy API to Cloudflare** when API,
+server, shared-model, or container changes reach `main` or `master`. The same workflow can be run manually with
 an immutable, full 40-character commit SHA. Configure the
 `cloudflare-production` protected environment before enabling the first
 release. Provision the D1 database and private R2 bucket, apply the committed
@@ -141,3 +157,20 @@ forward-only, so a rollback must remain compatible with already-applied schema.
 `cd Cloudflare && npx wrangler rollback <version-id> --name dont-unplug-that-api`
 rolls back only the Worker deployment and is appropriate only when the active
 Container image and D1 schema remain compatible.
+
+## Independent build and release pipelines
+
+| Surface | Validation | Production delivery |
+| --- | --- | --- |
+| Website | `.github/workflows/website.yml` — Website changes only | Same workflow, after its build succeeds; `website-production` environment |
+| Native app | `.github/workflows/native-validation.yml` — App and Shared changes | Manual `ios-testflight.yml` / `google-play-internal.yml` |
+| API / fixture server | `.github/workflows/api-validation.yml` — Cloudflare, Server, Shared and container changes | `cloudflare-deploy.yml`; existing `cloudflare-production` environment |
+
+A website-only push does not build the native app or deploy the API. Shared Swift
+changes validate both native and API code. Debug APKs are retained for matching
+native pushes, rather than every website or documentation push.
+
+Configuration remains local to each surface: `Website/package.json` and
+`Website/wrangler.jsonc`; `App/Package.swift`, `App/Darwin/` and `App/Android/`;
+`Cloudflare/package.json`, `Cloudflare/wrangler.jsonc` and the server Dockerfile.
+See `.github/DEPLOYMENT.md` for CI credential setup.

@@ -29,7 +29,7 @@ struct SetupCanvasView: View {
         .clipShape(.rect(cornerRadius: AppTheme.cardRadius))
         .overlay {
             RoundedRectangle(cornerRadius: AppTheme.cardRadius)
-                .stroke(.white.opacity(0.14), lineWidth: 1.0)
+                .stroke(AppTheme.separator, lineWidth: 1.0)
         }
         .accessibilityLabel("Annotated equipment setup")
         .task(id: photoURL) {
