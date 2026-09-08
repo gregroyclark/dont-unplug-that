@@ -28,8 +28,8 @@ enum GuidePhotoDerivative {
         }
         var photos: [ProcessedGuidePhoto] = []
         for (index, url) in urls.enumerated() {
-            #if SKIP
-            let rendered = try makeAndroidDerivative(urlString: url.absoluteString)
+            #if SKIP || os(Android)
+            let rendered = try makeAndroidDerivative(urlString: url.absoluteString, maxDimension: maximumGuidePhotoDimension, maxBytes: maximumGuidePhotoByteCount)
             #elseif os(iOS)
             let rendered = try makeIOSDerivative(url: url)
             #elseif os(macOS)
@@ -57,10 +57,18 @@ enum GuidePhotoDerivative {
     }
 }
 
-private struct RenderedPhoto {
+// SKIP @bridge
+struct RenderedPhoto {
     var data: Data
     var width: Int
     var height: Int
+
+    // SKIP @bridge
+    init(data: Data, width: Int, height: Int) {
+        self.data = data
+        self.width = width
+        self.height = height
+    }
 }
 
 #if !SKIP && os(iOS)
@@ -154,7 +162,7 @@ import android.net.Uri
 import android.os.Build
 import androidx.exifinterface.media.ExifInterface
 
-private func makeAndroidDerivative(urlString: String) throws -> RenderedPhoto {
+func makeAndroidDerivative(urlString: String, maxDimension: Int, maxBytes: Int) throws -> RenderedPhoto {
     let context = ProcessInfo.processInfo.androidContext
     let uri = Uri.parse(urlString)
     var bitmap: Bitmap
@@ -164,13 +172,13 @@ private func makeAndroidDerivative(urlString: String) throws -> RenderedPhoto {
         let stream = context.contentResolver.openInputStream(uri)
         guard let stream, let decoded = BitmapFactory.decodeStream(stream) else {
             stream?.close()
-            throw GuidePhotoDerivativeError.invalidPhoto
+            throw NSError(domain: "GuidePhotoDerivative", code: 1, userInfo: [NSLocalizedDescriptionKey: "A selected photo could not be read."])
         }
         stream.close()
         bitmap = orientedBitmap(decoded, uri: uri)
     }
 
-    let scale = min(1.0, Double(maximumGuidePhotoDimension) / Double(max(bitmap.width, bitmap.height)))
+    let scale = min(1.0, Double(maxDimension) / Double(max(bitmap.width, bitmap.height)))
     if scale < 1.0 {
         bitmap = Bitmap.createScaledBitmap(
             bitmap,
@@ -183,11 +191,11 @@ private func makeAndroidDerivative(urlString: String) throws -> RenderedPhoto {
         let output = java.io.ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, 82, output)
         let data = Data(platformValue: output.toByteArray())
-        if data.count <= maximumGuidePhotoByteCount {
+        if data.count <= maxBytes {
             return RenderedPhoto(data: data, width: bitmap.width, height: bitmap.height)
         }
         guard min(bitmap.width, bitmap.height) > 640 else {
-            throw GuidePhotoDerivativeError.tooLarge
+            throw NSError(domain: "GuidePhotoDerivative", code: 2, userInfo: [NSLocalizedDescriptionKey: "A photo is still larger than 5 MiB after safe resizing."])
         }
         bitmap = Bitmap.createScaledBitmap(
             bitmap,
@@ -211,21 +219,21 @@ private func orientedBitmap(_ bitmap: Bitmap, uri: Uri) -> Bitmap {
     let matrix = Matrix()
     switch orientation {
     case ExifInterface.ORIENTATION_FLIP_HORIZONTAL:
-        matrix.setScale(-1.0, 1.0)
+        matrix.setScale(Float(-1.0), Float(1.0))
     case ExifInterface.ORIENTATION_ROTATE_180:
-        matrix.setRotate(180.0)
+        matrix.setRotate(Float(180.0))
     case ExifInterface.ORIENTATION_FLIP_VERTICAL:
-        matrix.setScale(1.0, -1.0)
+        matrix.setScale(Float(1.0), Float(-1.0))
     case ExifInterface.ORIENTATION_TRANSPOSE:
-        matrix.setRotate(90.0)
-        matrix.postScale(-1.0, 1.0)
+        matrix.setRotate(Float(90.0))
+        matrix.postScale(Float(-1.0), Float(1.0))
     case ExifInterface.ORIENTATION_ROTATE_90:
-        matrix.setRotate(90.0)
+        matrix.setRotate(Float(90.0))
     case ExifInterface.ORIENTATION_TRANSVERSE:
-        matrix.setRotate(-90.0)
-        matrix.postScale(-1.0, 1.0)
+        matrix.setRotate(Float(-90.0))
+        matrix.postScale(Float(-1.0), Float(1.0))
     case ExifInterface.ORIENTATION_ROTATE_270:
-        matrix.setRotate(-90.0)
+        matrix.setRotate(Float(-90.0))
     default:
         return bitmap
     }

@@ -1,6 +1,10 @@
 import DontUnplugThatShared
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 struct SyncClient: Sendable {
     let baseURL: URL
     let transport: any HTTPTransport

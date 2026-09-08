@@ -1,6 +1,10 @@
 import DontUnplugThatShared
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 enum AuthClientError: LocalizedError, Equatable {
     case syncUnavailable
     case invalidCallback

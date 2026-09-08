@@ -14,11 +14,19 @@ struct GuideLibraryView: View {
         NavigationStack {
             List {
                 if records.isEmpty {
-                    ContentUnavailableView(
-                        "No saved guides",
-                        systemImage: "books.vertical",
-                        description: Text("Analyze a setup and it will appear here.")
-                    )
+                    VStack(spacing: AppTheme.standardSpacing) {
+                        AppSymbol(systemName: "books.vertical")
+                            .font(.largeTitle)
+                            .foregroundStyle(AppTheme.accent)
+                        Text("No saved guides")
+                            .font(.headline)
+                            .foregroundStyle(AppTheme.ink)
+                        Text("Analyze a setup and it will appear here.")
+                            .foregroundStyle(AppTheme.secondaryInk)
+                    }
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppTheme.sectionSpacing)
                 }
                 ForEach(records) { record in
                     VStack(alignment: .leading, spacing: AppTheme.compactSpacing) {
@@ -40,8 +48,8 @@ struct GuideLibraryView: View {
                                         .foregroundStyle(record.syncState.status == .conflicted ? AppTheme.warning : .secondary)
                                 }
                                 Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.tertiary)
+                                AppSymbol(systemName: "chevron.right")
+                                    .foregroundStyle(AppTheme.secondaryInk)
                             }
                         }
                         .buttonStyle(.plain)
@@ -57,7 +65,7 @@ struct GuideLibraryView: View {
                             Button(role: .destructive) {
                                 delete(record)
                             } label: {
-                                Label("Delete guide", systemImage: "trash")
+                                AppLabel("Delete guide", systemImage: "trash")
                             }
                             .font(.caption)
                             .disabled(isSyncing)

@@ -3,7 +3,7 @@ import SwiftUI
 struct EquipmentPlaceholderView: View {
     var body: some View {
         VStack(spacing: AppTheme.standardSpacing) {
-            Image(systemName: "photo")
+            AppSymbol(systemName: "photo")
                 .font(.largeTitle)
             Text("Add a clear photo of the setup")
                 .font(.headline)

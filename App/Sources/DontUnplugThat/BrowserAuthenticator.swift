@@ -1,6 +1,6 @@
 import Foundation
 
-#if !SKIP
+#if !SKIP && canImport(AuthenticationServices)
 import AuthenticationServices
 
 @MainActor

@@ -55,11 +55,11 @@ struct SyncSettingsView: View {
                     Section("Turn on Sync") {
                         Text("Use the same provider on your other devices. Provider linking is not available yet.")
                         Button { run { try await signIn(.apple) } } label: {
-                            Label("Continue with Apple", systemImage: "apple.logo")
+                            AppLabel("Continue with Apple", systemImage: "apple.logo")
                         }
                         .disabled(isWorking || isSyncing || baseURL == nil)
                         Button { run { try await signIn(.google) } } label: {
-                            Label("Continue with Google", systemImage: "person.crop.circle.badge.checkmark")
+                            AppLabel("Continue with Google", systemImage: "person.crop.circle.badge.checkmark")
                         }
                         .disabled(isWorking || isSyncing || baseURL == nil)
                         if baseURL == nil {

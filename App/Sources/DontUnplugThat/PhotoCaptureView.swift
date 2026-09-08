@@ -12,6 +12,25 @@ struct PhotoCaptureView: View {
 
     var canAddPhotos: Bool { photoURLs.count < 3 }
 
+    private func photoThumbnail(at index: Int) -> some View {
+        let label = "Photo " + String(index + 1) + " of " + String(photoURLs.count)
+        return Button {
+            activePhotoIndex = index
+        } label: {
+            SelectedPhotoView(url: photoURLs[index])
+                .frame(width: 86.0, height: 64.0)
+                .clipped()
+                .clipShape(.rect(cornerRadius: 10.0))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10.0)
+                        .stroke(index == activePhotoIndex ? AppTheme.accent : .clear, lineWidth: 3.0)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
+        .accessibilityValue(index == activePhotoIndex ? "Selected" : "Not selected")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: AppTheme.standardSpacing) {
             if photoURLs.isEmpty {
@@ -38,21 +57,7 @@ struct PhotoCaptureView: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: AppTheme.standardSpacing) {
                         ForEach(0..<photoURLs.count, id: \.self) { index in
-                            Button {
-                                activePhotoIndex = index
-                            } label: {
-                                SelectedPhotoView(url: photoURLs[index])
-                                    .frame(width: 86.0, height: 64.0)
-                                    .clipped()
-                                    .clipShape(.rect(cornerRadius: 10.0))
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 10.0)
-                                            .stroke(index == activePhotoIndex ? AppTheme.accent : .clear, lineWidth: 3.0)
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Photo \(index + 1) of \(photoURLs.count)")
-                            .accessibilityValue(index == activePhotoIndex ? "Selected" : "Not selected")
+                            photoThumbnail(at: index)
                         }
                     }
                     .padding(3.0)
@@ -61,17 +66,20 @@ struct PhotoCaptureView: View {
             }
 
             Button { showsCamera = true } label: {
-                Label(photoURLs.isEmpty ? "Take a photo" : "Add another angle", systemImage: "camera")
+                AppLabel(photoURLs.isEmpty ? "Take a photo" : "Add another angle", systemImage: "camera")
                     .font(.system(.headline, design: .rounded))
                     .frame(maxWidth: .infinity, minHeight: 44.0)
+                    .foregroundStyle(.white)
             }
             .buttonStyle(.borderedProminent)
+            #if !os(Android)
             .buttonBorderShape(.roundedRectangle(radius: 10.0))
+            #endif
             .disabled(!canAddPhotos)
             .withMediaPicker(type: .camera, isPresented: $showsCamera, selectedImageURL: $capturedPhotoURL)
 
             Button { showsLibrary = true } label: {
-                Label("Choose photos", systemImage: "photo.on.rectangle")
+                AppLabel("Choose photos", systemImage: "photo.on.rectangle")
                     .font(.system(.body, design: .rounded, weight: .medium))
                     .frame(maxWidth: .infinity, minHeight: 44.0)
             }
@@ -89,7 +97,7 @@ struct PhotoCaptureView: View {
 
             if !photoURLs.isEmpty {
                 Button(role: .destructive) { removeActivePhoto() } label: {
-                    Label("Remove selected photo", systemImage: "trash")
+                    AppLabel("Remove selected photo", systemImage: "trash")
                         .font(.footnote)
                         .frame(maxWidth: .infinity, minHeight: 44.0)
                 }

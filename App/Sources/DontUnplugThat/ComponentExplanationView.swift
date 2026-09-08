@@ -17,7 +17,7 @@ struct ComponentExplanationView: View {
                     .clipShape(.circle)
 
                 VStack(alignment: .leading, spacing: 4.0) {
-                    Label(
+                    AppLabel(
                         component.kind == .connection ? "Connection" : "Component",
                         systemImage: component.kind == .connection ? "cable.connector" : "shippingbox.fill"
                     )
@@ -50,7 +50,7 @@ struct ComponentExplanationView: View {
             Button {
                 showsUnpluggingImpact.toggle()
             } label: {
-                Label(
+                AppLabel(
                     showsUnpluggingImpact ? "Hide unplugging impact" : "What happens if I unplug this?",
                     systemImage: "powerplug.fill"
                 )
@@ -84,7 +84,7 @@ struct ComponentExplanationView: View {
         text: String
     ) -> some View {
         VStack(alignment: .leading, spacing: AppTheme.compactSpacing) {
-            Label(title, systemImage: systemImage)
+            AppLabel(title, systemImage: systemImage)
                 .font(.headline)
                 .foregroundStyle(tint)
             Text(text)

@@ -17,7 +17,7 @@ struct AppHeaderView: View {
                 .foregroundStyle(AppTheme.secondaryInk)
 
             if let itemCount {
-                Label("^[\(itemCount) item](inflect: true) found", systemImage: "viewfinder")
+                AppLabel("\(itemCount) items found", systemImage: "viewfinder")
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.accent)
                     .accessibilityLabel("\(itemCount) items found")

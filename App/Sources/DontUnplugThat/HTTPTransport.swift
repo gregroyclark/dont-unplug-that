@@ -1,6 +1,10 @@
 import DontUnplugThatShared
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 struct HTTPResponse: Sendable {
     let data: Data
     let statusCode: Int

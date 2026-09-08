@@ -36,54 +36,56 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: AppTheme.sectionSpacing) {
-                    appNavigation
+            GeometryReader { geometry in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: AppTheme.sectionSpacing) {
+                        appNavigation
 
-                    AppHeaderView(itemCount: guide?.components.count)
+                        AppHeaderView(itemCount: guide?.components.count)
 
-                    PhotoCaptureView(
-                        photoURLs: $photoURLs,
-                        activePhotoIndex: $activePhotoIndex
-                    )
-
-                    if !photoURLs.isEmpty {
-                        SetupCanvasView(
-                            photoURL: activePhotoURL,
-                            components: activePhotoComponents,
-                            selectedDisplayNumber: $selectedDisplayNumber
-                        )
-
-                        Text("Photo \(activePhotoIndex + 1) of \(photoURLs.count)")
-                            .font(.caption)
-                            .bold()
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-
-                        analysisControls
-                    }
-
-                    if let guide {
-                        guideSummary(guide)
-
-                        ComponentStripView(
-                            components: guide.components,
-                            selectedDisplayNumber: $selectedDisplayNumber,
+                        PhotoCaptureView(
+                            photoURLs: $photoURLs,
                             activePhotoIndex: $activePhotoIndex
                         )
 
-                        if let selectedComponent {
-                            ComponentExplanationView(component: selectedComponent)
-                                .id(selectedComponent.id)
-                        }
-                    }
+                        if !photoURLs.isEmpty {
+                            SetupCanvasView(
+                                photoURL: activePhotoURL,
+                                components: activePhotoComponents,
+                                selectedDisplayNumber: $selectedDisplayNumber
+                            )
 
-                    savedGuidesSection
-                    syncCard
+                            Text("Photo \(activePhotoIndex + 1) of \(photoURLs.count)")
+                                .font(.caption)
+                                .bold()
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+
+                            analysisControls
+                        }
+
+                        if let guide {
+                            guideSummary(guide)
+
+                            ComponentStripView(
+                                components: guide.components,
+                                selectedDisplayNumber: $selectedDisplayNumber,
+                                activePhotoIndex: $activePhotoIndex
+                            )
+
+                            if let selectedComponent {
+                                ComponentExplanationView(component: selectedComponent)
+                                    .id(selectedComponent.id)
+                            }
+                        }
+
+                        savedGuidesSection
+                        syncCard
+                    }
+                    .padding(AppTheme.pagePadding)
+                    .frame(width: min(geometry.size.width, 640.0))
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(AppTheme.pagePadding)
-                .frame(maxWidth: 640.0)
-                .frame(maxWidth: .infinity)
             }
             .background(AppTheme.pageBackground)
             #if !os(macOS)
@@ -141,7 +143,7 @@ struct ContentView: View {
 
     var appNavigation: some View {
         HStack(spacing: AppTheme.compactSpacing) {
-            Label("Don’t Unplug That", systemImage: "powerplug")
+            AppLabel("Don’t Unplug That", systemImage: "powerplug")
                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
                 .foregroundStyle(AppTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -172,7 +174,7 @@ struct ContentView: View {
                             .foregroundStyle(AppTheme.ink)
                             .multilineTextAlignment(.leading)
                         Spacer()
-                        Image(systemName: "chevron.right")
+                        AppSymbol(systemName: "chevron.right")
                             .foregroundStyle(AppTheme.secondaryInk)
                     }
                 }
@@ -190,11 +192,11 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: AppTheme.compactSpacing) {
             Button { showsSyncSettings = true } label: {
                 HStack(spacing: AppTheme.compactSpacing) {
-                    Image(systemName: account == nil ? "lock" : "icloud")
+                    AppSymbol(systemName: account == nil ? "lock" : "icloud")
                     Text(account == nil ? "Privacy & optional sync" : "Privacy & sync")
                     Spacer()
                     if isSyncing { ProgressView() }
-                    Image(systemName: "chevron.right")
+                    AppSymbol(systemName: "chevron.right")
                 }
                 .font(.footnote)
                 .frame(minHeight: 44.0)
@@ -212,7 +214,7 @@ struct ContentView: View {
     @ViewBuilder var analysisControls: some View {
         VStack(alignment: .leading, spacing: AppTheme.standardSpacing) {
             if analysisAvailability != .available {
-                Label(analysisAvailability.title, systemImage: analysisAvailability.systemImage)
+                AppLabel(analysisAvailability.title, systemImage: analysisAvailability.systemImage)
                     .font(.headline)
                     .foregroundStyle(analysisAvailability == .unavailable ? AppTheme.warning : AppTheme.accent)
 
@@ -222,7 +224,7 @@ struct ContentView: View {
             }
 
             if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                AppLabel(errorMessage, systemImage: "exclamationmark.triangle.fill")
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.warning)
                     .accessibilityLabel("Analysis error. \(errorMessage)")
@@ -234,7 +236,7 @@ struct ContentView: View {
                         ProgressView()
                             .tint(.white)
                     }
-                    Label(primaryActionTitle, systemImage: "sparkles")
+                    AppLabel(primaryActionTitle, systemImage: "sparkles")
                         .font(.headline)
                 }
                 .frame(maxWidth: .infinity, minHeight: 50.0)

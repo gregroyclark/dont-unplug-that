@@ -1,6 +1,6 @@
 import Foundation
 
-#if !SKIP
+#if !SKIP && canImport(CryptoKit)
 import CryptoKit
 #endif
 
@@ -26,6 +26,8 @@ enum PortableDigest {
     static func sha256(_ data: Data) -> Data {
         #if SKIP
         return data.sha256()
+        #elseif os(Android)
+        return androidSHA256(data)
         #else
         return Data(CryptoKit.SHA256.hash(data: data))
         #endif
@@ -49,3 +51,9 @@ enum PortableDigest {
             .replacingOccurrences(of: "=", with: "")
     }
 }
+
+#if SKIP
+func androidSHA256(_ data: Data) -> Data {
+    data.sha256()
+}
+#endif
