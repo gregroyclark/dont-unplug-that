@@ -1,6 +1,6 @@
 # Don’t Unplug That — Daylight website
 
-A responsive landing page built from the selected design in `../Design/daylight-selected.png`. Includes a keyboard-accessible example guide with selectable photo annotations, evidence notes, and expandable unplugging impacts. The example is illustrative, not live AI analysis. Native photo analysis, account sync and saved guides remain in the existing SwiftUI / Skip app.
+A static Astro landing page with a small TypeScript script for the interactive example, built from the selected design in `../Design/daylight-selected.png`. Includes a keyboard-accessible example guide with selectable photo annotations, evidence notes, and expandable unplugging impacts. The example is illustrative, not live AI analysis. Native photo analysis, account sync and saved guides remain in the existing SwiftUI / Skip app.
 
 ## Local preview
 

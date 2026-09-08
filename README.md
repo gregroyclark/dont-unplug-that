@@ -37,7 +37,7 @@ it with `DUT_API_BASE_URL`.
 
 ## Website and visual direction
 
-`Website/` is the Daylight website, built with React and Vite. It includes an
+`Website/` is the Daylight website, built with Astro. It includes an
 interactive, clearly labeled sample guide; photo analysis remains in the native
 app. Start it with `cd Website && npm install && npm run dev`. Build with
 `npm run build`; the static site is emitted at `dist/client/`. Its bundled Sites

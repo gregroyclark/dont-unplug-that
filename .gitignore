@@ -96,3 +96,4 @@ Website/node_modules/
 Website/dist/
 Website/.vite/
 Website/.wrangler/
+Website/.astro/

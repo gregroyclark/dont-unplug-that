@@ -1,0 +1,30 @@
+---
+import arrowRight from '@phosphor-icons/core/assets/regular/arrow-right.svg?raw';
+import camera from '@phosphor-icons/core/assets/regular/camera.svg?raw';
+import caretDown from '@phosphor-icons/core/assets/regular/caret-down.svg?raw';
+import eye from '@phosphor-icons/core/assets/regular/eye.svg?raw';
+import lockKey from '@phosphor-icons/core/assets/regular/lock-key.svg?raw';
+import plug from '@phosphor-icons/core/assets/regular/plug.svg?raw';
+import shieldCheck from '@phosphor-icons/core/assets/regular/shield-check.svg?raw';
+import x from '@phosphor-icons/core/assets/regular/x.svg?raw';
+import plugLight from '@phosphor-icons/core/assets/light/plug-light.svg?raw';
+import lockKeyLight from '@phosphor-icons/core/assets/light/lock-key-light.svg?raw';
+
+const icons = { 'arrow-right': arrowRight, camera, 'caret-down': caretDown, eye,
+  'lock-key': lockKey, plug, 'shield-check': shieldCheck, x };
+interface Props {
+  name: keyof typeof icons;
+  size?: number;
+  weight?: 'regular' | 'light';
+  class?: string;
+}
+const { name, size = 24, weight = 'regular', class: className } = Astro.props;
+const source = weight === 'light' && name === 'plug' ? plugLight
+  : weight === 'light' && name === 'lock-key' ? lockKeyLight : icons[name];
+// Render the original Phosphor paths; only the wrapper supplies size and accessibility.
+const paths = source.replace(/^<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
+---
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"
+  width={size} height={size} class={className} aria-hidden="true" focusable="false">
+  <Fragment set:html={paths} />
+</svg>

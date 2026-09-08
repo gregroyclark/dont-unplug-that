@@ -11,3 +11,7 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 ## Accepted direction — September 7, 2026
 
 Use Daylight (design 2), the exact reference at `../Design/daylight-selected.png`, for both the site and native app. White, cobalt blue, midnight navy, humanist sans, generous spacing, natural daylight product photos. Avoid industrial styling. Design 1 is archived for a different future project, not an alternate theme for this product.
+
+## Website framework — September 7, 2026
+
+Use Astro for the website, not React. Render static HTML and use a small browser script for the example interactions. Preserve the accepted Daylight design.
