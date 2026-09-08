@@ -36,8 +36,11 @@ jobs:
     env:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       NO_COLOR: "1"
-      WRANGLER_LOG_PATH: ${{ runner.temp }}/wrangler-logs
     steps:
+      - name: Configure Wrangler log directory
+        shell: bash
+        run: echo "WRANGLER_LOG_PATH=$RUNNER_TEMP/wrangler-logs" >> "$GITHUB_ENV"
+
       - name: Validate requested deployment commit
         if: github.event_name == 'workflow_dispatch'
         shell: bash
