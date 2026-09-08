@@ -9,3 +9,7 @@ White surfaces, midnight navy text (#0B153C), cobalt actions (#1249DC), pale blu
 Preserve on-device analysis, one-to-three photos, guide library, optional private sync, evidence levels and safety wording. Never imply that a photo can establish something is safe to disconnect. Keep sync settings secondary to capturing a photo. Never present example imagery as a real user guide.
 
 Design 1 (Field Guide) is archived for another future project at `/Users/gregclark/Code/assets/design-concepts/field-guide/`.
+
+The app icon on every platform is the upright cobalt plug inside an open circle from the Daylight concept. Master: `Brand/daylight-mark.svg`; run `node Design/Brand/generate-icons.mjs` after installing Website dependencies to regenerate platform assets.
+
+Keep the icon cobalt blue on white. No black or dark background. Transparent header artwork sits on the white page; Android adaptive backgrounds are white.

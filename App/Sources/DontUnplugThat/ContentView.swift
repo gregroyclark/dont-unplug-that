@@ -143,7 +143,14 @@ struct ContentView: View {
 
     var appNavigation: some View {
         HStack(spacing: AppTheme.compactSpacing) {
-            AppLabel("Don’t Unplug That", systemImage: "powerplug")
+            HStack(spacing: AppTheme.compactSpacing) {
+                Image("DaylightBrand", bundle: .module)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 32.0, height: 32.0)
+                    .accessibilityHidden(true)
+                Text("Don’t Unplug That")
+            }
                 .font(.system(.subheadline, design: .rounded, weight: .semibold))
                 .foregroundStyle(AppTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)

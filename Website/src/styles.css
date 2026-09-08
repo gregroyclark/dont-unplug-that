@@ -84,6 +84,8 @@ img {
   text-decoration: none;
 }
 .brand-icon {
+  height: auto;
+  flex-shrink: 0;
   color: var(--blue);
 }
 nav {

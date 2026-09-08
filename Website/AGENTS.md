@@ -15,3 +15,5 @@ Use Daylight (design 2), the exact reference at `../Design/daylight-selected.png
 ## Website framework — September 7, 2026
 
 Use Astro for the website, not React. Render static HTML and use a small browser script for the example interactions. Preserve the accepted Daylight design.
+
+Use the Daylight upright plug/open-circle brand mark from `../Design/Brand/daylight-mark.svg` for the website and app icons. Cobalt blue on white, never a black background.
