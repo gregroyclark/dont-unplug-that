@@ -80,8 +80,8 @@ function validateGuide(guide: { [key: string]: Json }, guideID: string, photoCou
   requiredText(guide.title, "guide.title", 200);
   requiredText(guide.summary, "guide.summary", 4_000);
   const components = guide.components;
-  if (!Array.isArray(components) || components.length < 5 || components.length > 12) {
-    throw new HttpError(400, "invalid_guide", "Guides require between five and twelve components");
+  if (!Array.isArray(components) || components.length < 1 || components.length > 12) {
+    throw new HttpError(400, "invalid_guide", "Guides require between one and twelve components");
   }
   const displayNumbers: number[] = [];
   for (const component of components) {

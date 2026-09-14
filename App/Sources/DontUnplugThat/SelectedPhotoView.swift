@@ -74,15 +74,32 @@ enum SelectedPhotoMetadata {
 #if SKIP
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.exifinterface.media.ExifInterface
 
 func androidPhotoAspectRatio(urlString: String) -> Double {
     let context = ProcessInfo.processInfo.androidContext
-    let stream = context.contentResolver.openInputStream(Uri.parse(urlString))
-    guard let stream, let bitmap = BitmapFactory.decodeStream(stream), bitmap.height > 0 else {
-        stream?.close()
+    let uri = Uri.parse(urlString)
+    do {
+        guard let stream = context.contentResolver.openInputStream(uri) else { return 4.0 / 3.0 }
+        defer { stream.close() }
+        let options = BitmapFactory.Options()
+        options.inJustDecodeBounds = true
+        BitmapFactory.decodeStream(stream, nil, options)
+        guard options.outWidth > 0, options.outHeight > 0 else { return 4.0 / 3.0 }
+        guard let metadata = context.contentResolver.openInputStream(uri) else { return 4.0 / 3.0 }
+        defer { metadata.close() }
+        let orientation = ExifInterface(metadata).getAttributeInt(
+            ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL
+        )
+        let swapsAxes = orientation == ExifInterface.ORIENTATION_TRANSPOSE
+            || orientation == ExifInterface.ORIENTATION_ROTATE_90
+            || orientation == ExifInterface.ORIENTATION_TRANSVERSE
+            || orientation == ExifInterface.ORIENTATION_ROTATE_270
+        return swapsAxes
+            ? Double(options.outHeight) / Double(options.outWidth)
+            : Double(options.outWidth) / Double(options.outHeight)
+    } catch {
         return 4.0 / 3.0
     }
-    stream.close()
-    return Double(bitmap.width) / Double(bitmap.height)
 }
 #endif

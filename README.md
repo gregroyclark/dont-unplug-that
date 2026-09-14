@@ -66,7 +66,7 @@ Cloudflare/ Worker glue, generated bindings, and pinned deployment tooling
 1. Pick or take a photo of the setup.
 2. Analyze the photos on device: Apple Foundation Models on iOS and ML Kit GenAI
    backed by AICore and Gemini Nano on Android.
-3. Receive 5–12 components or connections with normalized `x` and `y`
+3. Receive 1–12 components or connections with normalized `x` and `y`
    coordinates tied to the source photo.
 4. Tap a numbered pin to understand the item, the visual evidence, and the
    likely downstream impact of unplugging it.
@@ -76,6 +76,13 @@ Cloudflare/ Worker glue, generated bindings, and pinned deployment tooling
 
 The server fixture keeps the contract testable without becoming a cloud fallback
 for private photos.
+
+## Analysis readiness
+
+Photo analysis depends on device-specific system models; installing the app does
+not establish compatibility. See [platform integrations and acceptance gates](App/ANALYSIS-READINESS.md)
+for the iOS 27/Apple Intelligence and Android Prompt API requirements, implemented
+bridges, current limitations, and the physical-device verification plan.
 
 ## Local development
 

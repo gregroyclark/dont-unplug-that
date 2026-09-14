@@ -15,6 +15,9 @@ enum AnalysisAvailability: String, Sendable {
     case intelligenceDisabled
     case modelNotReady
     case unavailable
+    case checkFailed
+    case integrationUnavailable
+    case visionUnavailable
 
     var title: String {
         switch self {
@@ -27,6 +30,9 @@ enum AnalysisAvailability: String, Sendable {
         case .intelligenceDisabled: "Apple Intelligence is turned off"
         case .modelNotReady: "The on-device model is not ready"
         case .unavailable: "On-device analysis is unavailable"
+        case .checkFailed: "Could not check the on-device model"
+        case .integrationUnavailable: "Photo analysis is missing from this build"
+        case .visionUnavailable: "The model cannot analyze photos"
         }
     }
 
@@ -40,7 +46,10 @@ enum AnalysisAvailability: String, Sendable {
         case .deviceNotEligible: "Use an Apple Intelligence-capable device or an Android device supported by Gemini Nano."
         case .intelligenceDisabled: "Turn on Apple Intelligence in Settings, then return here."
         case .modelNotReady: "The system may still be downloading its model. Try again later."
-        case .unavailable: "This device cannot currently run the required private model."
+        case .unavailable: "The system has not made the required model available. On Android, this can mean unsupported hardware or unfinished AICore setup. Check for system and AICore updates, then retry."
+        case .checkFailed: "The model service did not complete its availability check. Retry after checking for system updates."
+        case .integrationUnavailable: "Install an updated version of this app that includes photo analysis. Updating the phone alone will not enable it in this build."
+        case .visionUnavailable: "The available system model does not support both image understanding and structured guides. Check for system and model updates."
         }
     }
 
@@ -48,7 +57,7 @@ enum AnalysisAvailability: String, Sendable {
         switch self {
         case .available: "checkmark.shield.fill"
         case .checking, .downloadable, .downloading, .modelNotReady: "arrow.down.circle.fill"
-        case .unsupportedOperatingSystem, .deviceNotEligible, .intelligenceDisabled, .unavailable: "exclamationmark.shield.fill"
+        case .unsupportedOperatingSystem, .deviceNotEligible, .intelligenceDisabled, .unavailable, .checkFailed, .integrationUnavailable, .visionUnavailable: "exclamationmark.shield.fill"
         }
     }
 }
@@ -90,12 +99,12 @@ struct AnalysisItemPayload: Codable, Sendable {
 
 enum OnDeviceAnalyzer {
     static let analysisPrompt = """
-        Treat all attached photos as views of the same unfamiliar technical setup. Identify 5 to 12 important visible components or cable connections. For each item, identify the zero-based photo index where it is clearest and the center x/y location normalized from 0 to 1 in that photo: x=0 is the left edge, x=1 is the right edge, y=0 is the top edge, and y=1 is the bottom edge. Explain its likely purpose and the likely consequence if it is unplugged. Distinguish what is directly observed, inferred, or unclear. Never claim that something is safe to unplug. Add a specific safety warning for mains power, batteries, hidden destinations, active recording, high voltage, or any potentially cascading interruption; otherwise use an empty safety warning. Keep explanations short and grounded only in the photos.
+        Treat all attached photos as views of the same unfamiliar technical setup. Identify up to 12 important visible components or cable connections. Include only items supported by visible evidence; do not invent items to meet a minimum count. For each item, identify the zero-based photo index where it is clearest and the center x/y location normalized from 0 to 1 in that photo: x=0 is the left edge, x=1 is the right edge, y=0 is the top edge, and y=1 is the bottom edge. Explain its likely purpose and the likely consequence if it is unplugged. Distinguish what is directly observed, inferred, or unclear. Never claim that something is safe to unplug. Add a specific safety warning for mains power, batteries, hidden destinations, active recording, high voltage, or any potentially cascading interruption; otherwise use an empty safety warning. Keep explanations short and grounded only in the photos.
         """
 
-    static func availability() async -> AnalysisAvailability {
+    static func availability() async throws -> AnalysisAvailability {
         #if os(Android)
-        let status = await androidModelStatus()
+        let status = try await androidModelStatus()
         return AnalysisAvailability(rawValue: status) ?? .unavailable
         #elseif !SKIP && compiler(>=6.4) && canImport(FoundationModels)
         if #available(iOS 27.0, macOS 27.0, *) {
@@ -104,7 +113,7 @@ enum OnDeviceAnalyzer {
             case .available:
                 guard model.capabilities.contains(.vision),
                       model.capabilities.contains(.guidedGeneration) else {
-                    return .unavailable
+                    return .visionUnavailable
                 }
                 return .available
             case .unavailable(.deviceNotEligible):
@@ -116,6 +125,11 @@ enum OnDeviceAnalyzer {
             case .unavailable:
                 return .unavailable
             }
+        }
+        return .unsupportedOperatingSystem
+        #elseif os(iOS) || os(macOS)
+        if #available(iOS 27.0, macOS 27.0, *) {
+            return .integrationUnavailable
         }
         return .unsupportedOperatingSystem
         #else
@@ -134,6 +148,10 @@ enum OnDeviceAnalyzer {
     static func analyze(photoURLs: [URL]) async throws -> Guide {
         guard (1...3).contains(photoURLs.count) else {
             throw OnDeviceAnalyzerError.invalidPhotoCount
+        }
+
+        guard try await availability() == .available else {
+            throw OnDeviceAnalyzerError.modelUnavailable
         }
 
         #if os(Android)
@@ -161,12 +179,21 @@ enum OnDeviceAnalyzer {
         guard let data = cleanedResponse.data(using: .utf8) else {
             throw OnDeviceAnalyzerError.invalidResponse
         }
-        let payload = try JSONDecoder().decode(AnalysisPayload.self, from: data)
-        return try guide(from: payload, photoCount: photoCount)
+        do {
+            let payload = try JSONDecoder().decode(AnalysisPayload.self, from: data)
+            return try guide(from: payload, photoCount: photoCount)
+        } catch {
+            throw OnDeviceAnalyzerError.invalidResponse
+        }
     }
 
     static func guide(from payload: AnalysisPayload, photoCount: Int) throws -> Guide {
-        guard photoCount > 0, (5...12).contains(payload.items.count) else {
+        guard (1...3).contains(photoCount), (1...12).contains(payload.items.count),
+              payload.items.allSatisfy({ item in
+                  (0..<photoCount).contains(item.photoIndex)
+                      && item.x.isFinite && item.y.isFinite
+                      && (0.0...1.0).contains(item.x) && (0.0...1.0).contains(item.y)
+              }) else {
             throw OnDeviceAnalyzerError.invalidResponse
         }
 
@@ -191,8 +218,8 @@ enum OnDeviceAnalyzer {
                 displayNumber: index + 1,
                 name: nonempty(item.name, fallback: "Unidentified item \(index + 1)"),
                 kind: kind,
-                photoIndex: min(max(item.photoIndex, 0), photoCount - 1),
-                location: NormalizedCoordinate(x: clamped(item.x), y: clamped(item.y)),
+                photoIndex: item.photoIndex,
+                location: NormalizedCoordinate(x: item.x, y: item.y),
                 likelyPurpose: nonempty(item.likelyPurpose, fallback: "The purpose could not be determined from these photos."),
                 unpluggingImpact: nonempty(item.unpluggingImpact, fallback: "The effect of unplugging this item could not be determined."),
                 evidenceLevel: evidence,
@@ -213,14 +240,10 @@ enum OnDeviceAnalyzer {
         return trimmed.isEmpty ? fallback : trimmed
     }
 
-    static func clamped(_ value: Double) -> Double {
-        min(max(value, 0.0), 1.0)
-    }
-
     static let androidPrompt = """
         Analyze one to three photos of the same unfamiliar technical setup. Return JSON only, without Markdown, in exactly this shape:
         {"title":"string","summary":"string","items":[{"name":"string","kind":"component or connection","photoIndex":0,"x":0.5,"y":0.5,"likelyPurpose":"string","unpluggingImpact":"string","evidenceLevel":"observed, inferred, or unclear","uncertaintyNotes":"string","safetyWarning":"string or empty"}]}
-        Return 5 to 12 important visible items. Coordinates are the item's center normalized from 0 to 1 in the selected zero-based photo: x=0 is the left edge, x=1 is the right edge, y=0 is the top edge, and y=1 is the bottom edge. Explain likely purpose and what may happen if unplugged. Never claim that unplugging is safe. Always state uncertainty. Add a safety warning for mains power, batteries, hidden destinations, active recording, high voltage, or cascading interruption. Ground every claim only in the photos.
+        Return up to 12 important visible items. Do not invent items to meet a minimum count. Return an empty items array if none can be identified. Coordinates are the item's center normalized from 0 to 1 in the selected zero-based photo: x=0 is the left edge, x=1 is the right edge, y=0 is the top edge, and y=1 is the bottom edge. Explain likely purpose and what may happen if unplugged. Never claim that unplugging is safe. Always state uncertainty. Add a safety warning for mains power, batteries, hidden destinations, active recording, high voltage, or cascading interruption. Ground every claim only in the photos.
         """
 }
 
@@ -230,7 +253,7 @@ enum OnDeviceAnalyzer {
 struct AppleAnalysisPayload {
     var title: String
     var summary: String
-    @Guide(description: "The 5 to 12 most important visible components or connections", .count(5...12))
+    @Guide(description: "Up to 12 visible components or connections; do not invent items to meet a minimum", .count(0...12))
     var items: [AppleAnalysisItemPayload]
 
     var commonPayload: AnalysisPayload {
@@ -304,7 +327,8 @@ extension OnDeviceAnalyzer {
 #endif
 
 #if SKIP
-import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
 import android.net.Uri
 import com.google.mlkit.genai.common.DownloadStatus
 import com.google.mlkit.genai.common.FeatureStatus
@@ -313,22 +337,19 @@ import com.google.mlkit.genai.prompt.content
 import com.google.mlkit.genai.prompt.generateContentRequest
 import java.lang.IllegalStateException
 
-func androidModelStatus() async -> String {
+// Throw service failures across the Skip bridge so they remain distinct from UNAVAILABLE.
+func androidModelStatus() async throws -> String {
     let model = Generation.getClient()
     defer { model.close() }
-    do {
-        let status = try await model.checkStatus()
-        switch status {
-        case FeatureStatus.AVAILABLE:
-            return "available"
-        case FeatureStatus.DOWNLOADABLE:
-            return "downloadable"
-        case FeatureStatus.DOWNLOADING:
-            return "downloading"
-        default:
-            return "unavailable"
-        }
-    } catch {
+    let status = try await model.checkStatus()
+    switch status {
+    case FeatureStatus.AVAILABLE:
+        return "available"
+    case FeatureStatus.DOWNLOADABLE:
+        return "downloadable"
+    case FeatureStatus.DOWNLOADING:
+        return "downloading"
+    default:
         return "unavailable"
     }
 }
@@ -345,13 +366,20 @@ func downloadAndroidModel() async throws {
 
 func analyzeWithGeminiNano(photoURLStrings: [String], prompt: String) async throws -> String {
     let context = ProcessInfo.processInfo.androidContext
-    let bitmaps = try photoURLStrings.map { urlString in
-        let stream = context.contentResolver.openInputStream(Uri.parse(urlString))
-        guard let stream, let bitmap = BitmapFactory.decodeStream(stream) else {
-            throw IllegalStateException("Could not read an attached photo")
+    var bitmaps: [Bitmap] = []
+    defer { for bitmap in bitmaps { bitmap.recycle() } }
+    for urlString in photoURLStrings {
+        let source = ImageDecoder.createSource(context.contentResolver, Uri.parse(urlString))
+        // ImageDecoder applies EXIF orientation. Bound decoded memory for three camera images.
+        let bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ in
+            decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE)
+            let scale = min(1.0, 1600.0 / Double(max(info.size.width, info.size.height)))
+            decoder.setTargetSize(
+                max(1, Int(Double(info.size.width) * scale)),
+                max(1, Int(Double(info.size.height) * scale))
+            )
         }
-        stream.close()
-        return bitmap
+        bitmaps.append(bitmap)
     }
     let model = Generation.getClient()
     defer { model.close() }
@@ -366,6 +394,9 @@ func analyzeWithGeminiNano(photoURLStrings: [String], prompt: String) async thro
         text(prompt)
     }
     let response = try await model.generateContent(generateContentRequest(requestContent))
+    guard !response.candidates.isEmpty() else {
+        throw IllegalStateException("The model returned no guide. Try a clearer photo.")
+    }
     return response.candidates[0].text
 }
 #endif

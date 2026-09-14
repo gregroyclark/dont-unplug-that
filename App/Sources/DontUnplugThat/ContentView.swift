@@ -11,6 +11,8 @@ struct ContentView: View {
     @State var guide: Guide?
     @State var selectedDisplayNumber = 1
     @State var analysisAvailability = AnalysisAvailability.checking
+    @State var modelCheckError: String?
+    @State var isCheckingModel = false
     @State var isWorking = false
     @State var errorMessage: String?
     @State var savedGuides: [LocalGuideRecord] = []
@@ -43,10 +45,16 @@ struct ContentView: View {
 
                         AppHeaderView(itemCount: guide?.components.count)
 
+                        if photoURLs.isEmpty && analysisAvailability != .available {
+                            analysisControls
+                        }
+
                         PhotoCaptureView(
                             photoURLs: $photoURLs,
-                            activePhotoIndex: $activePhotoIndex
+                            activePhotoIndex: $activePhotoIndex,
+                            canCapture: analysisAvailability == .available
                         )
+                        .disabled(isWorking)
 
                         if !photoURLs.isEmpty {
                             SetupCanvasView(
@@ -108,8 +116,19 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active, account != nil {
-                Task { await runSync() }
+            if newPhase == .active {
+                Task {
+                    await refreshAvailability()
+                    if account != nil { await runSync() }
+                }
+            }
+        }
+        .task(id: analysisAvailability) {
+            while analysisAvailability == .downloading {
+                do { try await Task.sleep(nanoseconds: 5_000_000_000) }
+                catch { return }
+                guard !Task.isCancelled else { return }
+                if scenePhase == .active { await refreshAvailability() }
             }
         }
         .sheet(isPresented: $showsLibrary) {
@@ -228,6 +247,18 @@ struct ContentView: View {
                 Text(analysisAvailability.message)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+
+                if let modelCheckError {
+                    Text(modelCheckError)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Model service details: \(modelCheckError)")
+                }
+
+                Button(isCheckingModel ? "Checking model…" : "Check again") {
+                    Task { await refreshAvailability() }
+                }
+                .disabled(isWorking || isCheckingModel)
             }
 
             if let errorMessage {
@@ -237,19 +268,21 @@ struct ContentView: View {
                     .accessibilityLabel("Analysis error. \(errorMessage)")
             }
 
-            Button(action: performPrimaryAction) {
-                HStack {
-                    if isWorking {
-                        ProgressView()
-                            .tint(.white)
+            if analysisAvailability == .downloadable || !photoURLs.isEmpty {
+                Button(action: performPrimaryAction) {
+                    HStack {
+                        if isWorking {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                        AppLabel(primaryActionTitle, systemImage: "sparkles")
+                            .font(.headline)
                     }
-                    AppLabel(primaryActionTitle, systemImage: "sparkles")
-                        .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 50.0)
                 }
-                .frame(maxWidth: .infinity, minHeight: 50.0)
+                .buttonStyle(.borderedProminent)
+                .disabled(isWorking || isCheckingModel || !canPerformPrimaryAction)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isWorking || !canPerformPrimaryAction)
         }
         .padding(AppTheme.cardPadding)
         .background(AppTheme.accentSoft)
@@ -279,12 +312,15 @@ struct ContentView: View {
     }
 
     var canPerformPrimaryAction: Bool {
-        analysisAvailability == .available || analysisAvailability == .downloadable
+        analysisAvailability == .downloadable
+            || (analysisAvailability == .available && !photoURLs.isEmpty)
     }
 
     func performPrimaryAction() {
+        guard !isWorking, !isCheckingModel, canPerformPrimaryAction else { return }
+        isWorking = true
+        let inputPhotoURLs = photoURLs
         Task {
-            isWorking = true
             errorMessage = nil
             defer { isWorking = false }
 
@@ -295,13 +331,17 @@ struct ContentView: View {
                     return
                 }
 
-                let analyzedGuide = try await OnDeviceAnalyzer.analyze(photoURLs: photoURLs)
+                let analyzedGuide = try await OnDeviceAnalyzer.analyze(photoURLs: inputPhotoURLs)
                 _ = try await repository.saveAnalyzedGuide(
                     analyzedGuide,
-                    sourcePhotoURLs: photoURLs
+                    sourcePhotoURLs: inputPhotoURLs
                 )
+                guard photoURLs == inputPhotoURLs else {
+                    reloadLibrary()
+                    return
+                }
                 guide = analyzedGuide
-                displayedGuidePhotoURLs = photoURLs
+                displayedGuidePhotoURLs = inputPhotoURLs
                 reloadLibrary()
                 if let firstComponent = analyzedGuide.components.first {
                     selectedDisplayNumber = firstComponent.displayNumber
@@ -318,7 +358,17 @@ struct ContentView: View {
     }
 
     func refreshAvailability() async {
-        analysisAvailability = await OnDeviceAnalyzer.availability()
+        guard !isCheckingModel else { return }
+        isCheckingModel = true
+        defer { isCheckingModel = false }
+        do {
+            analysisAvailability = try await OnDeviceAnalyzer.availability()
+            modelCheckError = nil
+        } catch {
+            analysisAvailability = .checkFailed
+            // Availability errors contain service diagnostics, never photo inference content.
+            modelCheckError = error.localizedDescription
+        }
     }
 
     func reloadLibrary() {

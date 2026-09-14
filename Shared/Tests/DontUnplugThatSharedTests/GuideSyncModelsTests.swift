@@ -114,3 +114,14 @@ func validatesSnapshotRevisions() throws {
         try invalid.validate()
     }
 }
+
+@Test("Local saving and sync accept a single grounded item but reject empty guides")
+func validatesSmallGuide() throws {
+    var small = guide()
+    small.components = Array(small.components.prefix(1))
+    try PendingGuideUpload(guide: small, photos: [photo(index: 0)]).validate()
+    small.components = []
+    #expect(throws: GuideSyncValidationError.invalidGuide) {
+        try PendingGuideUpload(guide: small, photos: [photo(index: 0)]).validate()
+    }
+}

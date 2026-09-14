@@ -5,12 +5,14 @@ struct PhotoCaptureView: View {
     @Binding var photoURLs: [URL]
     @Binding var activePhotoIndex: Int
 
+    var canCapture = true
+
     @State var showsCamera = false
     @State var showsLibrary = false
     @State var capturedPhotoURL: URL?
     @State var pickedLibraryURLs: [URL] = []
 
-    var canAddPhotos: Bool { photoURLs.count < 3 }
+    var canAddPhotos: Bool { canCapture && photoURLs.count < 3 }
 
     private func photoThumbnail(at index: Int) -> some View {
         let label = "Photo " + String(index + 1) + " of " + String(photoURLs.count)
@@ -89,7 +91,7 @@ struct PhotoCaptureView: View {
             .withMediaPicker(type: .library, isPresented: $showsLibrary,
                              allowsMultipleSelection: true, selectedImageURLs: $pickedLibraryURLs)
 
-            Text(canAddPhotos ? "Up to 3 angles. Analyzed on this device." : "All 3 angles added. Ready to analyze.")
+            Text(!canCapture ? "Photo analysis must be available before adding photos." : (photoURLs.count < 3 ? "Up to 3 angles. Analyzed on this device." : "All 3 angles added."))
                 .font(.footnote)
                 .foregroundStyle(AppTheme.secondaryInk)
                 .multilineTextAlignment(.center)

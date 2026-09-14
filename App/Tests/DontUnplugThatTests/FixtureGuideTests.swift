@@ -33,9 +33,9 @@ struct FixtureGuideTests {
         let item = AnalysisItemPayload(
             name: "  ",
             kind: "unknown",
-            photoIndex: 9,
-            x: -2.0,
-            y: 3.0,
+            photoIndex: 1,
+            x: 0.2,
+            y: 0.8,
             likelyPurpose: "",
             unpluggingImpact: "",
             evidenceLevel: "guess",
@@ -52,7 +52,7 @@ struct FixtureGuideTests {
 
         #expect(guide.components.count == 5)
         #expect(guide.components.allSatisfy { $0.photoIndex == 1 })
-        #expect(guide.components.allSatisfy { $0.location == NormalizedCoordinate(x: 0.0, y: 1.0) })
+        #expect(guide.components.allSatisfy { $0.location == NormalizedCoordinate(x: 0.2, y: 0.8) })
         #expect(guide.components.allSatisfy { $0.evidenceLevel == .unclear })
         #expect(guide.components.allSatisfy { !$0.uncertaintyNotes.isEmpty })
         #expect(guide.components.allSatisfy { $0.safetyWarning != nil })

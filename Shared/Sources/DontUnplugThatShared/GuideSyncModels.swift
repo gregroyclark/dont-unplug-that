@@ -219,7 +219,7 @@ private func validateGuide(_ guide: Guide, photos: [SyncPhotoDescriptor]) throws
     }
     guard !guide.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
           !guide.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-          (5...12).contains(guide.components.count),
+          (1...12).contains(guide.components.count),
           guide.components.allSatisfy({ component in
               photos.indices.contains(component.photoIndex) && component.location.isNormalized
           }) else {
